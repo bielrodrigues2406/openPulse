@@ -77,7 +77,7 @@ export function CockpitApp() {
           </button>
         </div>
 
-        <StatusLine status={r.status} elapsedS={r.elapsedS} contact={r.contact} save={r.save} />
+        <StatusLine status={r.status} elapsedS={r.elapsedS} contact={r.contact} save={r.save} hasHr={r.bpm !== null} />
       </header>
 
       {view === 'history' ? (
@@ -169,8 +169,8 @@ function Track(props: { title: string; meta: ReactNode; tall?: boolean; children
   );
 }
 
-function StatusLine(props: { status: SensorStatus; elapsedS: Readout['elapsedS']; contact: boolean | null; save: SaveState }) {
-  const { status, elapsedS, contact, save } = props;
+function StatusLine(props: { status: SensorStatus; elapsedS: Readout['elapsedS']; contact: boolean | null; save: SaveState; hasHr: boolean }) {
+  const { status, elapsedS, contact, save, hasHr } = props;
   let text: string;
   let tone: 'idle' | 'live' | 'warn' | 'error' = 'idle';
   switch (status.state) {
@@ -181,8 +181,13 @@ function StatusLine(props: { status: SensorStatus; elapsedS: Readout['elapsedS']
       text = 'Procurando cinta…';
       break;
     case 'streaming':
-      tone = contact === false ? 'warn' : 'live';
-      text = contact === false ? `${status.deviceName} · sem contato com a pele` : `${status.deviceName} · ${clock(elapsedS)}`;
+      if (contact === false || !hasHr) {
+        tone = 'warn';
+        text = `${status.deviceName} · ${contact === false ? 'sem contato com a pele' : 'aguardando FC'} — umedeça os eletrodos`;
+      } else {
+        tone = 'live';
+        text = `${status.deviceName} · ${clock(elapsedS)}`;
+      }
       break;
     case 'error':
       tone = 'error';

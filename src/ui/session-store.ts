@@ -98,8 +98,10 @@ export class SessionStore {
     this.source = source;
     const offEvent = sensor.onEvent(this.handleEvent);
     const offStatus = sensor.onStatus((status) => {
-      if (status.state === 'streaming') this.begin(status.deviceName);
-      else this.end();
+      // A streaming → streaming update (e.g. ECG came up late) must not restart the session.
+      if (status.state === 'streaming') {
+        if (!this.recording) this.begin(status.deviceName);
+      } else this.end();
       this.update({ status });
     });
     this.detach = () => {
