@@ -1,0 +1,41 @@
+import { type SessionRecord, summarize } from './recorded-session';
+
+/**
+ * Open export formats. CSV uses '.' decimals and ',' separators (RFC 4180) so it loads
+ * unchanged in Python/R/Kubios; spreadsheets in pt-BR can import with "separator: comma".
+ */
+
+export function rrToCsv(s: SessionRecord): string {
+  const rows = s.rr.map((b) => `${fixed(b.tMs, 1)},${fixed(b.rrMs, 3)},${b.accepted ? 1 : 0}`);
+  return ['t_ms,rr_ms,accepted', ...rows].join('\n') + '\n';
+}
+
+export function hrToCsv(s: SessionRecord): string {
+  return ['t_s,bpm', ...s.hr.map((p) => `${fixed(p.tS, 3)},${p.bpm}`)].join('\n') + '\n';
+}
+
+export function ecgToCsv(s: SessionRecord, ecgUv: Int32Array): string {
+  if (ecgUv.length !== s.ecgSampleCount) {
+    throw new RangeError(`ECG has ${ecgUv.length} samples, record says ${s.ecgSampleCount}`);
+  }
+  const lines = new Array<string>(ecgUv.length + 1);
+  lines[0] = 't_s,ecg_uv';
+  for (let i = 0; i < ecgUv.length; i++) lines[i + 1] = `${fixed(i / s.ecgHz, 4)},${ecgUv[i]}`;
+  return lines.join('\n') + '\n';
+}
+
+/** Full record plus derived summary. ECG is omitted; it has its own CSV. */
+export function sessionToJson(s: SessionRecord): string {
+  return JSON.stringify({ ...s, summary: summarize(s) }, null, 2);
+}
+
+/** Filesystem-safe stem, e.g. "openpulse-2026-10-16-1830". Local time, as the user sees it. */
+export function fileStem(s: SessionRecord): string {
+  const d = new Date(s.startedAtIso);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `openpulse-${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
+}
+
+function fixed(n: number, digits: number): string {
+  return Number(n.toFixed(digits)).toString();
+}

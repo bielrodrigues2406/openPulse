@@ -2,7 +2,8 @@
 
 Real-time Web Bluetooth cockpit for the Polar H10 on a stationary bike. Local-first: nothing leaves the browser.
 
-**Status:** stage 1. Live HR, beat-by-beat R-R with artifact gating, RMSSD, and a 130 Hz ECG strip.
+**Status:** stage 2. Live HR, beat-by-beat R-R with artifact gating, RMSSD, a 130 Hz ECG strip,
+and local session history with open export.
 ECG and 200 Hz accelerometer streams are decoded; DFA α1, respiration and cadence are not built yet.
 
 ## Run
@@ -24,12 +25,27 @@ use **Simulador** there. The simulator is deterministic (same seed, same signal)
 - **RMSSD** uses only pairs where both beats were accepted, over the last 60 s.
 - **Artifacts** above 5% turn red: that's roughly where DFA α1 stops being trustworthy.
 
+## Sessions and export
+
+Sessions are written to IndexedDB every 30 s while streaming and again on disconnect, so closing the tab
+loses at most 30 s. Data never leaves this browser; clearing site data deletes it. From **Sessões**:
+
+| File | Columns |
+|---|---|
+| `*-rr.csv` | `t_ms,rr_ms,accepted` — every beat, rejected ones flagged `0`, not dropped |
+| `*-hr.csv` | `t_s,bpm` |
+| `*-ecg.csv` | `t_s,ecg_uv` at 130 Hz |
+| `*.json` | full record (schema v1) plus summary; ECG excluded |
+
+CSV uses `.` decimals and `,` separators, so it loads unchanged in Python, R or Kubios.
+
 ## Layout
 
 ```
 src/domain/ports/        sensor contract shared by real and simulated adapters
 src/domain/physiology/   pure parsers and HRV math (no DOM, fully tested)
-src/adapters/            Web Bluetooth H10, simulator
+src/domain/session/      session record, summary, CSV/JSON export (pure)
+src/adapters/            Web Bluetooth H10, simulator, IndexedDB repository
 src/ui/                  React shell; canvases read typed ring buffers per animation frame
 tests/                   parser properties and HRV invariants
 ```

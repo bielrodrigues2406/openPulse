@@ -2,25 +2,30 @@ import { type ReactNode, useEffect, useMemo, useState, useSyncExternalStore } fr
 import type { PolarSensor, SensorStatus } from '../domain/ports/polar-sensor.port';
 import { SimulatedH10Adapter } from '../adapters/simulated-h10.adapter';
 import { WebBluetoothH10Adapter, isWebBluetoothAvailable } from '../adapters/web-bluetooth-h10.adapter';
-import { SessionStore, type Readout } from './session-store';
+import { IndexedDbSessionRepository } from '../adapters/indexeddb-session.repository';
+import { SessionStore, type Readout, type SaveState } from './session-store';
+import { SessionHistory } from './components/SessionHistory';
 import { LiveEcgStrip } from './components/LiveEcgStrip';
 import { HrTrend } from './components/HrTrend';
 import { RrTachogram } from './components/RrTachogram';
 
 type Source = 'h10' | 'sim';
+type View = 'live' | 'history';
 
 export function CockpitApp() {
   const bleAvailable = isWebBluetoothAvailable();
   const [source, setSource] = useState<Source>(bleAvailable ? 'h10' : 'sim');
-  const store = useMemo(() => new SessionStore(), []);
+  const [view, setView] = useState<View>('live');
+  const repo = useMemo(() => new IndexedDbSessionRepository(), []);
+  const store = useMemo(() => new SessionStore((record, ecg) => repo.save(record, ecg)), [repo]);
   const sensor = useMemo<PolarSensor>(
     () => (source === 'h10' ? new WebBluetoothH10Adapter() : new SimulatedH10Adapter()),
     [source],
   );
   useEffect(() => {
-    store.attach(sensor);
+    store.attach(sensor, source);
     return () => sensor.disconnect();
-  }, [store, sensor]);
+  }, [store, sensor, source]);
 
   const r = useSyncExternalStore(store.subscribe, store.getReadout);
   const live = r.status.state === 'streaming';
@@ -29,9 +34,13 @@ export function CockpitApp() {
   return (
     <div className="shell">
       <header className="bar">
-        <div className="brand">
-          openPulse<span className="brand-sub">H10 cockpit</span>
-        </div>
+        <nav className="brand-nav">
+          <span className="brand">openPulse</span>
+          <div className="tabs" role="tablist" aria-label="Seção">
+            <button role="tab" aria-selected={view === 'live'} onClick={() => setView('live')}>Ao vivo</button>
+            <button role="tab" aria-selected={view === 'history'} onClick={() => setView('history')}>Sessões</button>
+          </div>
+        </nav>
 
         <div className="controls">
           <div className="segmented" role="radiogroup" aria-label="Fonte de dados">
@@ -57,9 +66,15 @@ export function CockpitApp() {
           </button>
         </div>
 
-        <StatusLine status={r.status} elapsedS={r.elapsedS} contact={r.contact} />
+        <StatusLine status={r.status} elapsedS={r.elapsedS} contact={r.contact} save={r.save} />
       </header>
 
+      {view === 'history' ? (
+        <main className="history-wrap">
+          <SessionHistory repo={repo} refreshKey={r.save} />
+        </main>
+      ) : (
+        <>
       <section className="readouts" aria-label="Leituras">
         <Metric label="FC" unit="bpm" value={r.bpm} digits={0} accent="hr" large />
         <Metric label="R-R" unit="ms" value={r.lastRrMs} digits={0} accent="rr" />
@@ -87,6 +102,8 @@ export function CockpitApp() {
           </Track>
         </div>
       </main>
+        </>
+      )}
     </div>
   );
 }
@@ -127,7 +144,8 @@ function Track(props: { title: string; meta: ReactNode; tall?: boolean; children
   );
 }
 
-function StatusLine({ status, elapsedS, contact }: { status: SensorStatus; elapsedS: Readout['elapsedS']; contact: boolean | null }) {
+function StatusLine(props: { status: SensorStatus; elapsedS: Readout['elapsedS']; contact: boolean | null; save: SaveState }) {
+  const { status, elapsedS, contact, save } = props;
   let text: string;
   let tone: 'idle' | 'live' | 'warn' | 'error' = 'idle';
   switch (status.state) {
@@ -150,6 +168,8 @@ function StatusLine({ status, elapsedS, contact }: { status: SensorStatus; elaps
     <div className={`status status-${tone}`} role="status">
       <span className="status-dot" aria-hidden />
       {text}
+      {save.state === 'saved' && <span className="status-save">salvo {new Date(save.at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>}
+      {save.state === 'error' && <span className="status-save is-error">falha ao salvar: {save.message}</span>}
     </div>
   );
 }
