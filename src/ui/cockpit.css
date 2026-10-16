@@ -132,6 +132,8 @@ button { font: inherit; color: inherit; }
 .tabs button { background: none; border: 0; padding: 6px 10px; border-radius: 4px; color: var(--text-dim); cursor: pointer; }
 .tabs button:hover { color: var(--text); }
 .tabs button[aria-selected='true'] { color: var(--text); box-shadow: inset 0 -2px 0 var(--text); border-radius: 0; }
+.status-copy { background: none; border: 1px solid var(--line); border-radius: 4px; padding: 2px 8px; font-size: 12px; color: var(--text-dim); cursor: pointer; white-space: nowrap; }
+.status-copy:hover { color: var(--text); border-color: var(--text-faint); }
 .status-save { color: var(--text-faint); padding-left: 8px; border-left: 1px solid var(--line); }
 .is-error { color: var(--danger) !important; }
 

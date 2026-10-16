@@ -1,6 +1,7 @@
 import { parseHeartRateMeasurement } from '../domain/physiology/ble-hr-parser';
 import { PMD_START_ACC, PMD_START_ECG, PMD_STOP_ACC, PMD_STOP_ECG, parsePmdFrame } from '../domain/physiology/pmd-stream-parser';
 import { PMD_ALREADY_IN_STATE, PMD_SUCCESS, parsePmdControlResponse, pmdErrorText, type PmdControlResponse } from '../domain/physiology/pmd-control';
+import type { DiagnosticsSource } from '../domain/ports/polar-sensor.port';
 import { SensorBase } from './listeners';
 
 const HR_SERVICE = 0x180d;
@@ -13,7 +14,7 @@ export function isWebBluetoothAvailable(): boolean {
   return typeof navigator !== 'undefined' && navigator.bluetooth !== undefined;
 }
 
-export class WebBluetoothH10Adapter extends SensorBase {
+export class WebBluetoothH10Adapter extends SensorBase implements DiagnosticsSource {
   readonly label = 'Polar H10';
   private device: BluetoothDevice | null = null;
   private connecting = false;
@@ -23,6 +24,21 @@ export class WebBluetoothH10Adapter extends SensorBase {
   private pmdLastTry = 0;
   private pmdControl: BluetoothRemoteGATTCharacteristic | null = null;
   private pendingResponse: ((r: PmdControlResponse) => void) | null = null;
+  private userDisconnect = false;
+  private linkLostWhileConnecting = false;
+  private readonly log: string[] = [];
+  private logStart = 0;
+
+  diagnostics(): readonly string[] {
+    return [`${navigator.userAgent}`, ...this.log];
+  }
+
+  private step(text: string): void {
+    const line = `+${Math.round(performance.now() - this.logStart)} ms  ${text}`;
+    this.log.push(line);
+    if (this.log.length > 200) this.log.shift();
+    console.info('[openPulse BLE]', line);
+  }
 
   async connect(): Promise<void> {
     const bluetooth = navigator.bluetooth;
@@ -32,23 +48,34 @@ export class WebBluetoothH10Adapter extends SensorBase {
     }
     if (this.connecting) return; // a second click must not start a parallel GATT connect
     this.connecting = true;
+    this.userDisconnect = false;
+    this.linkLostWhileConnecting = false;
+    this.log.length = 0;
+    this.logStart = performance.now();
+    this.step('requestDevice');
     this.setStatus({ state: 'connecting' });
     try {
       const device = await bluetooth.requestDevice({
         filters: [{ namePrefix: 'Polar H10' }],
         optionalServices: [HR_SERVICE, PMD_SERVICE],
       });
+      this.step(`escolhido: ${device.name ?? '?'}`);
       this.device = device;
       device.removeEventListener('gattserverdisconnected', this.handleDisconnect);
       device.addEventListener('gattserverdisconnected', this.handleDisconnect);
       // On Windows the link often drops during service discovery right after connect
       // ("GATT Server is disconnected"); the whole connect + subscribe step is retried.
       const server = await retryOnNetworkError(async () => {
-        const srv = await connectGatt(device);
+        this.linkLostWhileConnecting = false;
+        this.step('gatt.connect');
+        const srv = await connectGatt(device, undefined, (m) => this.step(m));
+        this.step('conectado; serviço FC');
         const hrChar = await (await srv.getPrimaryService(HR_SERVICE)).getCharacteristic(HR_MEASUREMENT);
+        this.step('notificações FC');
         hrChar.removeEventListener('characteristicvaluechanged', this.handleHr);
         hrChar.addEventListener('characteristicvaluechanged', this.handleHr);
         await hrChar.startNotifications();
+        this.step('FC assinada');
         return srv;
       });
 
@@ -59,11 +86,17 @@ export class WebBluetoothH10Adapter extends SensorBase {
       this.pmd = 'off';
       this.pmdRetries = 0;
       await this.tryStartPmd();
+      // The link can drop during PMD setup; the disconnect event was swallowed while connecting.
+      if (this.linkLostWhileConnecting || !server.connected) {
+        throw new DOMException('Link caiu logo após conectar', 'NetworkError');
+      }
+      this.step('pronto');
     } catch (err) {
+      this.step(`falhou: ${err instanceof DOMException ? err.name + ': ' : ''}${err instanceof Error ? err.message : String(err)}`);
       this.device?.gatt?.disconnect();
       this.device = null;
-      // User closing the chooser is not an error worth shouting about.
-      if (err instanceof DOMException && err.name === 'NotFoundError') this.setStatus({ state: 'idle' });
+      // User closing the chooser is not an error worth shouting about; other NotFoundErrors are.
+      if (err instanceof DOMException && err.name === 'NotFoundError' && /cancel/i.test(err.message)) this.setStatus({ state: 'idle' });
       else this.setStatus({ state: 'error', message: describeBleError(err) });
     } finally {
       this.connecting = false;
@@ -76,14 +109,16 @@ export class WebBluetoothH10Adapter extends SensorBase {
     if (!this.server || this.pmd !== 'off') return;
     this.pmd = 'starting';
     this.pmdLastTry = performance.now();
+    this.step('iniciando ECG/ACC');
     try {
       await this.startPmd(this.server);
       this.pmd = 'on';
+      this.step('ECG/ACC ativos');
       this.setStatus({ state: 'streaming', deviceName: this.deviceName });
     } catch (err) {
       this.pmd = 'off';
       const reason = err instanceof Error ? err.message : String(err);
-      console.warn('PMD (ECG/ACC) failed:', err);
+      this.step(`ECG/ACC falhou: ${reason}`);
       this.setStatus({ state: 'streaming', deviceName: `${this.deviceName} · sem ECG (${reason})` });
     }
   }
@@ -133,6 +168,7 @@ export class WebBluetoothH10Adapter extends SensorBase {
   };
 
   disconnect(): void {
+    this.userDisconnect = true;
     const control = this.pmdControl;
     if (control && this.device?.gatt?.connected) {
       // Stop streams so the next session does not find them running; best effort.
@@ -146,12 +182,17 @@ export class WebBluetoothH10Adapter extends SensorBase {
   }
 
   private readonly handleDisconnect = (): void => {
-    if (this.connecting) return; // a failed attempt inside connectGatt; the retry loop owns state
+    this.step('gattserverdisconnected');
+    if (this.connecting) {
+      this.linkLostWhileConnecting = true; // connect() decides what to do with it
+      return;
+    }
     this.device = null;
     this.server = null;
     this.pmdControl = null;
     this.pmd = 'off';
-    this.setStatus({ state: 'idle' });
+    if (this.userDisconnect) this.setStatus({ state: 'idle' });
+    else this.setStatus({ state: 'error', message: 'A cinta desconectou. Clique em Conectar para retomar.' });
   };
 
   private readonly handleHr = (e: Event): void => {
@@ -192,6 +233,7 @@ const CONNECT_TIMEOUT_MS = 10_000;
 export async function connectGatt(
   device: BluetoothDevice,
   wait: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+  log: (msg: string) => void = () => undefined,
 ): Promise<BluetoothRemoteGATTServer> {
   const gatt = device.gatt;
   if (!gatt) throw new Error('Dispositivo sem servidor GATT');
@@ -202,6 +244,7 @@ export async function connectGatt(
       return await withTimeout(gatt.connect(), CONNECT_TIMEOUT_MS, wait);
     } catch (err) {
       lastError = err;
+      log(`tentativa ${attempt} falhou: ${err instanceof Error ? err.message : String(err)}`);
       gatt.disconnect();
       if (attempt < CONNECT_ATTEMPTS) await wait(600 * attempt);
     }

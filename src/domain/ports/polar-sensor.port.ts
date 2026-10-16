@@ -11,6 +11,11 @@ export type SensorStatus =
   | { readonly state: 'streaming'; readonly deviceName: string }
   | { readonly state: 'error'; readonly message: string };
 
+/** Timestamped connection steps, for the 'copy diagnostics' button. */
+export interface DiagnosticsSource {
+  diagnostics(): readonly string[];
+}
+
 export interface PolarSensor {
   readonly label: string;
   connect(): Promise<void>;

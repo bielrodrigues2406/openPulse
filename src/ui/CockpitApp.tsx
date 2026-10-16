@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import type { PolarSensor, SensorStatus } from '../domain/ports/polar-sensor.port';
+import type { DiagnosticsSource, PolarSensor, SensorStatus } from '../domain/ports/polar-sensor.port';
 import { SimulatedH10Adapter } from '../adapters/simulated-h10.adapter';
 import { WebBluetoothH10Adapter, isWebBluetoothAvailable } from '../adapters/web-bluetooth-h10.adapter';
 import { IndexedDbSessionRepository } from '../adapters/indexeddb-session.repository';
@@ -77,7 +77,7 @@ export function CockpitApp() {
           </button>
         </div>
 
-        <StatusLine status={r.status} elapsedS={r.elapsedS} contact={r.contact} save={r.save} hasHr={r.bpm !== null} />
+        <StatusLine status={r.status} elapsedS={r.elapsedS} contact={r.contact} save={r.save} hasHr={r.bpm !== null} diagnostics={'diagnostics' in sensor ? (sensor as DiagnosticsSource) : null} />
       </header>
 
       {view === 'history' ? (
@@ -169,8 +169,9 @@ function Track(props: { title: string; meta: ReactNode; tall?: boolean; children
   );
 }
 
-function StatusLine(props: { status: SensorStatus; elapsedS: Readout['elapsedS']; contact: boolean | null; save: SaveState; hasHr: boolean }) {
-  const { status, elapsedS, contact, save, hasHr } = props;
+function StatusLine(props: { status: SensorStatus; elapsedS: Readout['elapsedS']; contact: boolean | null; save: SaveState; hasHr: boolean; diagnostics: DiagnosticsSource | null }) {
+  const { status, elapsedS, contact, save, hasHr, diagnostics } = props;
+  const [copied, setCopied] = useState(false);
   let text: string;
   let tone: 'idle' | 'live' | 'warn' | 'error' = 'idle';
   switch (status.state) {
@@ -183,7 +184,7 @@ function StatusLine(props: { status: SensorStatus; elapsedS: Readout['elapsedS']
     case 'streaming':
       if (contact === false || !hasHr) {
         tone = 'warn';
-        text = `${status.deviceName} · ${contact === false ? 'sem contato com a pele' : 'aguardando FC'} — umedeça os eletrodos`;
+        text = `${status.deviceName} · ${contact === false ? 'sem contato com a pele' : 'aguardando FC'}`;
       } else {
         tone = 'live';
         text = `${status.deviceName} · ${clock(elapsedS)}`;
@@ -200,6 +201,16 @@ function StatusLine(props: { status: SensorStatus; elapsedS: Readout['elapsedS']
       {text}
       {save.state === 'saved' && <span className="status-save">salvo {new Date(save.at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>}
       {save.state === 'error' && <span className="status-save is-error">falha ao salvar: {save.message}</span>}
+      {diagnostics && (tone === 'error' || tone === 'warn') && (
+        <button
+          className="status-copy"
+          onClick={() => {
+            void navigator.clipboard.writeText(diagnostics.diagnostics().join('\n')).then(() => setCopied(true));
+          }}
+        >
+          {copied ? 'copiado' : 'copiar diagnóstico'}
+        </button>
+      )}
     </div>
   );
 }
