@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { IndexedDbSessionRepository } from '../../adapters/indexeddb-session.repository';
 import { type SessionRecord, summarize } from '../../domain/session/recorded-session';
-import { ecgToCsv, fileStem, hrToCsv, rrToCsv, sessionToJson } from '../../domain/session/session-export';
+import { dfaToCsv, ecgToCsv, fileStem, hrToCsv, rrToCsv, sessionToJson } from '../../domain/session/session-export';
 import { download } from '../download';
 
 type Load =
@@ -57,6 +57,7 @@ export function SessionHistory({ repo, refreshKey }: { repo: IndexedDbSessionRep
             <th scope="col" className="num">FC máx</th>
             <th scope="col" className="num">RMSSD</th>
             <th scope="col" className="num">Artefatos</th>
+            <th scope="col" className="num">α1 mín</th>
             <th scope="col">Fonte</th>
             <th scope="col"><span className="sr-only">Ações</span></th>
           </tr>
@@ -75,12 +76,14 @@ export function SessionHistory({ repo, refreshKey }: { repo: IndexedDbSessionRep
                 <td data-label="Artefatos" className={sum.artifactPct !== null && sum.artifactPct > 5 ? 'num is-error' : 'num'}>
                   {fmt(sum.artifactPct, 1, '%')}
                 </td>
+                <td data-label="α1 mín" className="num">{fmt(sum.minAlpha1, 2)}</td>
                 <td data-label="Fonte" className="dim">{s.source === 'sim' ? 'Simulador' : s.deviceName}</td>
                 <td className="actions-cell">
                   <div className="actions">
                   <button onClick={() => act(s.id, () => download(`${stem}.json`, sessionToJson(s), 'application/json'))}>JSON</button>
                   <button onClick={() => act(s.id, () => download(`${stem}-rr.csv`, rrToCsv(s), 'text/csv'))}>R-R</button>
                   <button onClick={() => act(s.id, () => download(`${stem}-hr.csv`, hrToCsv(s), 'text/csv'))}>FC</button>
+                  <button disabled={s.dfa.length === 0} onClick={() => act(s.id, () => download(`${stem}-dfa.csv`, dfaToCsv(s), 'text/csv'))}>α1</button>
                   <button
                     disabled={s.ecgSampleCount === 0}
                     onClick={() => act(s.id, async () => download(`${stem}-ecg.csv`, ecgToCsv(s, await repo.ecg(s.id)), 'text/csv'))}

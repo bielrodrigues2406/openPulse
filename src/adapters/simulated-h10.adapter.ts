@@ -2,7 +2,7 @@ import { SensorBase } from './listeners';
 
 /**
  * Deterministic physiological simulator: same seed, same stream.
- * RR carries respiratory sinus arrhythmia (~0.25 Hz) plus a slow HR drift and seeded noise;
+ * RR follows a 15 min ramp test (see RampRrModel);
  * ECG is a sum of Gaussian P/QRS/T waves placed on those beats; occasional ectopic beats
  * exercise the artifact gate.
  */
@@ -13,7 +13,7 @@ const ACC_HZ = 200;
 const ACC_FRAME = 36;
 const TICK_MS = 50;
 
-function mulberry32(seed: number): () => number {
+export function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
     a = (a + 0x6d2b79f5) >>> 0;
@@ -28,6 +28,7 @@ export class SimulatedH10Adapter extends SensorBase {
   readonly label = 'Simulador';
   private timer: ReturnType<typeof setInterval> | null = null;
   private random = mulberry32(1);
+  private rrModel = new RampRrModel();
   private simMs = 0;
   private nextBeatMs = 0;
   private beatTimes: number[] = [];
@@ -57,6 +58,7 @@ export class SimulatedH10Adapter extends SensorBase {
 
   private reset(): void {
     this.random = mulberry32(this.seed);
+    this.rrModel = new RampRrModel();
     this.simMs = 0;
     this.nextBeatMs = 600;
     this.beatTimes = [];
@@ -69,12 +71,7 @@ export class SimulatedH10Adapter extends SensorBase {
   }
 
   private rrAt(tMs: number): number {
-    const t = tMs / 1000;
-    const base = 60000 / (68 + 22 * (0.5 - 0.5 * Math.cos((2 * Math.PI * t) / 600))); // 68→90 bpm over 5 min
-    const rsa = 45 * Math.sin(2 * Math.PI * 0.25 * t);
-    const noise = (this.random() - 0.5) * 30;
-    const ectopic = this.random() < 0.01 ? -0.35 : 0;
-    return base + rsa + noise + base * ectopic;
+    return this.rrModel.next(tMs, this.random);
   }
 
   private advance(dtMs: number): void {
@@ -133,4 +130,27 @@ export class SimulatedH10Adapter extends SensorBase {
 function gauss(x: number, mu: number, sigma: number): number {
   const z = (x - mu) / sigma;
   return Math.exp(-0.5 * z * z);
+}
+
+/**
+ * RR during a ramp: intensity rises linearly from 0 to 1 over 15 min, then holds.
+ * HR 70 → 165 bpm. Fractal correlation (AR(1), φ=0.95) and RSA fade with intensity while
+ * uncorrelated noise remains, so DFA α1 falls from ~1.2 toward ~0.5 — crossing 0.75 near
+ * minute ~12, like a real test. 1% of beats are premature (ectopic).
+ */
+export class RampRrModel {
+  static readonly RAMP_MS = 15 * 60_000;
+  private ar = 0;
+
+  next(tMs: number, random: () => number): number {
+    const p = Math.min(tMs / RampRrModel.RAMP_MS, 1);
+    const base = 60000 / (70 + 95 * p);
+    const gauss = Math.sqrt(-2 * Math.log(1 - random())) * Math.cos(2 * Math.PI * random());
+    this.ar = 0.95 * this.ar + gauss;
+    const correlated = (1 - p) ** 1.5 * 15 * this.ar;
+    const rsa = 8 * (1 - p) ** 2 * Math.sin((2 * Math.PI * tMs) / 4000);
+    const white = (6 + 4 * p) * (random() - 0.5) * 3.4;
+    const rr = base + correlated + rsa + white;
+    return random() < 0.01 ? rr * 0.65 : rr;
+  }
 }

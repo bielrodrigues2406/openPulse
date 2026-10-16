@@ -1,4 +1,4 @@
-import type { SessionRecord } from '../domain/session/recorded-session';
+import { type SessionRecord, upgradeRecord } from '../domain/session/recorded-session';
 
 const DB_NAME = 'openpulse';
 const DB_VERSION = 1;
@@ -24,8 +24,8 @@ export class IndexedDbSessionRepository {
   /** Newest first. */
   async list(): Promise<SessionRecord[]> {
     const tx = (await this.open()).transaction(SESSIONS, 'readonly');
-    const all = await request<SessionRecord[]>(tx.objectStore(SESSIONS).getAll());
-    return all.sort((a, b) => b.startedAtIso.localeCompare(a.startedAtIso));
+    const raw = await request<Parameters<typeof upgradeRecord>[0][]>(tx.objectStore(SESSIONS).getAll());
+    return raw.map(upgradeRecord).sort((a, b) => b.startedAtIso.localeCompare(a.startedAtIso));
   }
 
   async ecg(id: string): Promise<Int32Array> {

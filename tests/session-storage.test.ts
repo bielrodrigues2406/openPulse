@@ -3,8 +3,8 @@ import { IDBFactory } from 'fake-indexeddb';
 import { describe, expect, it } from 'vitest';
 import { IndexedDbSessionRepository } from '../src/adapters/indexeddb-session.repository';
 import { RrSeries } from '../src/domain/physiology/rr-quality';
-import { SESSION_SCHEMA_VERSION, type SessionRecord, summarize } from '../src/domain/session/recorded-session';
-import { ecgToCsv, fileStem, hrToCsv, rrToCsv, sessionToJson } from '../src/domain/session/session-export';
+import { SESSION_SCHEMA_VERSION, type SessionRecord, summarize, upgradeRecord } from '../src/domain/session/recorded-session';
+import { dfaToCsv, ecgToCsv, fileStem, hrToCsv, rrToCsv, sessionToJson } from '../src/domain/session/session-export';
 
 function record(id: string, startedAtIso: string, rrValues = [800, 810, 400, 805, 790], ecgSampleCount = 4): SessionRecord {
   const rr = new RrSeries();
@@ -20,6 +20,10 @@ function record(id: string, startedAtIso: string, rrValues = [800, 810, 400, 805
     ecgSampleCount,
     hr: [{ tS: 1, bpm: 74 }, { tS: 2.5, bpm: 76 }],
     rr: [...rr.all()],
+    dfa: [
+      { tS: 120, alpha1: 1.05, artifactPct: 0.8, beats: 140 },
+      { tS: 125, alpha1: null, reason: 'artifacts', artifactPct: 6.2, beats: 141 },
+    ],
   };
 }
 
@@ -95,6 +99,16 @@ describe('export formats', () => {
     const { summary, ...rest } = parsed;
     expect(rest).toEqual(s);
     expect(summary).toEqual(summarize(s));
+  });
+
+  it('DFA CSV leaves alpha1 empty and states why when a window was withheld', () => {
+    expect(dfaToCsv(s)).toBe('t_s,alpha1,artifact_pct,beats,invalid_reason\n120,1.05,0.8,140,\n125,,6.2,141,artifacts\n');
+  });
+
+  it('upgrades v1 records (no DFA) on read and refuses records from a newer app', async () => {
+    const { dfa: _drop, ...v1 } = { ...s, schemaVersion: 1 };
+    expect(upgradeRecord(v1)).toEqual({ ...s, dfa: [] });
+    expect(() => upgradeRecord({ ...s, schemaVersion: 99 })).toThrow(/v99/);
   });
 
   it('file stem is filesystem-safe', () => {

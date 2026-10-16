@@ -24,6 +24,13 @@ export function ecgToCsv(s: SessionRecord, ecgUv: Int32Array): string {
   return lines.join('\n') + '\n';
 }
 
+export function dfaToCsv(s: SessionRecord): string {
+  const rows = s.dfa.map((p) =>
+    `${fixed(p.tS, 1)},${p.alpha1 === null ? '' : fixed(p.alpha1, 4)},${fixed(p.artifactPct, 2)},${p.beats},${p.alpha1 === null ? p.reason : ''}`,
+  );
+  return ['t_s,alpha1,artifact_pct,beats,invalid_reason', ...rows].join('\n') + '\n';
+}
+
 /** Full record plus derived summary. ECG is omitted; it has its own CSV. */
 export function sessionToJson(s: SessionRecord): string {
   return JSON.stringify({ ...s, summary: summarize(s) }, null, 2);

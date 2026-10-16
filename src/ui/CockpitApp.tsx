@@ -3,13 +3,24 @@ import type { PolarSensor, SensorStatus } from '../domain/ports/polar-sensor.por
 import { SimulatedH10Adapter } from '../adapters/simulated-h10.adapter';
 import { WebBluetoothH10Adapter, isWebBluetoothAvailable } from '../adapters/web-bluetooth-h10.adapter';
 import { IndexedDbSessionRepository } from '../adapters/indexeddb-session.repository';
-import { SessionStore, type Readout, type SaveState } from './session-store';
+import type { DspResponse } from '../workers/dsp.protocol';
+import { SessionStore, type DspChannel, type Readout, type SaveState } from './session-store';
 import { SessionHistory } from './components/SessionHistory';
 import { LiveEcgStrip } from './components/LiveEcgStrip';
 import { HrTrend } from './components/HrTrend';
 import { RrTachogram } from './components/RrTachogram';
+import { DfaTrack } from './components/DfaTrack';
+import { VT1_ALPHA1, VT2_ALPHA1, type DfaPoint } from '../domain/physiology/dfa-alpha1';
 
 type Source = 'h10' | 'sim';
+
+function createDspWorker(): DspChannel {
+  const worker = new Worker(new URL('../workers/dsp.worker.ts', import.meta.url), { type: 'module' });
+  return {
+    post: (msg) => worker.postMessage(msg),
+    onMessage: (listener) => worker.addEventListener('message', (e: MessageEvent<DspResponse>) => listener(e.data)),
+  };
+}
 type View = 'live' | 'history';
 
 export function CockpitApp() {
@@ -17,7 +28,7 @@ export function CockpitApp() {
   const [source, setSource] = useState<Source>(bleAvailable ? 'h10' : 'sim');
   const [view, setView] = useState<View>('live');
   const repo = useMemo(() => new IndexedDbSessionRepository(), []);
-  const store = useMemo(() => new SessionStore((record, ecg) => repo.save(record, ecg)), [repo]);
+  const store = useMemo(() => new SessionStore((record, ecg) => repo.save(record, ecg), createDspWorker()), [repo]);
   const sensor = useMemo<PolarSensor>(
     () => (source === 'h10' ? new WebBluetoothH10Adapter() : new SimulatedH10Adapter()),
     [source],
@@ -87,6 +98,15 @@ export function CockpitApp() {
           warn={r.artifactPct !== null && r.artifactPct > 5}
           hint="Acima de 5% o DFA α1 deixa de ser confiável"
         />
+        <Metric
+          label="DFA α1"
+          unit=""
+          value={r.dfa?.alpha1 ?? null}
+          digits={2}
+          accent="dfa"
+          note={dfaNote(r.dfa)}
+          hint="Janela de 120 s, atualizada a cada 5 s. Limiares 0,75/0,50 são médias populacionais, não seus limiares individuais."
+        />
       </section>
 
       <main className="tracks">
@@ -94,6 +114,9 @@ export function CockpitApp() {
           {live || r.bpm !== null ? <LiveEcgStrip store={store} /> : <Empty source={source} />}
         </Track>
         <div className="tracks-row">
+          <Track title="DFA α1" meta={<>120 s / 5 s · <span className="key-reject">|</span> janela descartada</>}>
+            <DfaTrack store={store} />
+          </Track>
           <Track title="Frequência cardíaca" meta="bpm · 10 min">
             <HrTrend store={store} />
           </Track>
@@ -113,7 +136,8 @@ function Metric(props: {
   unit: string;
   value: number | null;
   digits: number;
-  accent?: 'hr' | 'rr';
+  accent?: 'hr' | 'rr' | 'dfa';
+  note?: string;
   large?: boolean;
   warn?: boolean;
   hint?: string;
@@ -126,8 +150,9 @@ function Metric(props: {
       <div className="metric-label">{props.label}</div>
       <div className="metric-value">
         {props.value === null ? '—' : props.value.toLocaleString('pt-BR', { maximumFractionDigits: props.digits, minimumFractionDigits: props.digits })}
-        <span className="metric-unit">{props.unit}</span>
+        {props.unit && <span className="metric-unit">{props.unit}</span>}
       </div>
+      {props.note && <div className="metric-note">{props.note}</div>}
     </div>
   );
 }
@@ -190,6 +215,14 @@ function Empty({ source }: { source: Source }) {
       )}
     </div>
   );
+}
+
+function dfaNote(p: DfaPoint | null): string {
+  if (p === null) return 'aguardando 120 s';
+  if (p.alpha1 === null) return p.reason === 'artifacts' ? 'artefatos > 5% — descartado' : 'poucos batimentos';
+  if (p.alpha1 >= VT1_ALPHA1) return 'abaixo de VT1 (est.)';
+  if (p.alpha1 >= VT2_ALPHA1) return 'entre VT1 e VT2 (est.)';
+  return 'acima de VT2 (est.)';
 }
 
 function clock(s: number): string {

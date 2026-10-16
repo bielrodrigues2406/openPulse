@@ -1,5 +1,7 @@
 import type { PolarSensor, SensorEvent, SensorStatus } from '../domain/ports/polar-sensor.port';
 import { RrSeries, artifactRate, rmssd } from '../domain/physiology/rr-quality';
+import type { DfaPoint } from '../domain/physiology/dfa-alpha1';
+import type { DspRequest, DspResponse } from '../workers/dsp.protocol';
 import { SESSION_SCHEMA_VERSION, type HrPoint, type SessionRecord } from '../domain/session/recorded-session';
 
 export const ECG_HZ = 130;
@@ -21,6 +23,13 @@ export interface Readout {
   readonly contact: boolean | null;
   readonly elapsedS: number;
   readonly save: SaveState;
+  readonly dfa: DfaPoint | null;
+}
+
+/** The DSP worker as the store sees it; a plain function stub in tests. */
+export interface DspChannel {
+  post(msg: DspRequest): void;
+  onMessage(listener: (msg: DspResponse) => void): void;
 }
 
 export type Persist = (record: SessionRecord, ecgUv: Int32Array) => Promise<void>;
@@ -63,6 +72,7 @@ export class SessionStore {
   readonly ecg = new Float32Array(ECG_DISPLAY_CAPACITY);
   ecgWritten = 0; // total samples ever written; display index = ecgWritten % capacity
   readonly hr: HrPoint[] = [];
+  readonly dfa: DfaPoint[] = [];
   rr = new RrSeries();
 
   private recording: Recording | null = null;
@@ -72,7 +82,16 @@ export class SessionStore {
   private readonly listeners = new Set<() => void>();
   private detach: (() => void) | null = null;
 
-  constructor(private readonly persist: Persist) {}
+  constructor(
+    private readonly persist: Persist,
+    private readonly dsp: DspChannel,
+  ) {
+    dsp.onMessage((msg) => {
+      if (!this.recording) return; // late reply from a session that already ended
+      this.dfa.push(...msg.points);
+      this.update({ dfa: msg.points.at(-1) ?? this.readout.dfa });
+    });
+  }
 
   attach(sensor: PolarSensor, source: SessionRecord['source']): void {
     this.detach?.();
@@ -101,7 +120,9 @@ export class SessionStore {
     this.ecg.fill(0);
     this.ecgWritten = 0;
     this.hr.length = 0;
+    this.dfa.length = 0;
     this.rr = new RrSeries();
+    this.dsp.post({ type: 'reset' });
     this.recording = {
       id: crypto.randomUUID(),
       startedAtIso: new Date().toISOString(),
@@ -135,6 +156,7 @@ export class SessionStore {
       ecgSampleCount: ecg.length,
       hr: [...this.hr],
       rr: [...this.rr.all()],
+      dfa: [...this.dfa],
     };
     try {
       await this.persist(record, ecg);
@@ -154,7 +176,11 @@ export class SessionStore {
         return; // stored once respiration/cadence lands; streamed now to validate the link
       case 'hr': {
         let last: number | null = this.readout.lastRrMs;
-        for (const rr of e.rrMs) last = this.rr.push(rr).rrMs;
+        const beats = e.rrMs.map((rr) => this.rr.push(rr));
+        if (beats.length) {
+          last = beats.at(-1)!.rrMs;
+          this.dsp.post({ type: 'beats', beats });
+        }
         const elapsedS = this.recording ? (e.receivedAt - this.recording.startedPerf) / 1000 : 0;
         if (e.bpm > 0) this.hr.push({ tS: elapsedS, bpm: e.bpm });
         const win = this.rr.window(HRV_WINDOW_MS);
@@ -179,5 +205,5 @@ export class SessionStore {
 }
 
 function emptyReadout(status: SensorStatus): Readout {
-  return { status, bpm: null, lastRrMs: null, rmssdMs: null, artifactPct: null, contact: null, elapsedS: 0, save: { state: 'none' } };
+  return { status, bpm: null, lastRrMs: null, rmssdMs: null, artifactPct: null, contact: null, elapsedS: 0, save: { state: 'none' }, dfa: null };
 }
