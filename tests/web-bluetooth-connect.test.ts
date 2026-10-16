@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { connectGatt, describeBleError } from '../src/adapters/web-bluetooth-h10.adapter';
+import { connectGatt, describeBleError, retryOnNetworkError } from '../src/adapters/web-bluetooth-h10.adapter';
 
 function fakeDevice(results: ('ok' | 'busy' | 'hang')[]) {
   const calls = { connect: 0, disconnect: 0 };
@@ -45,7 +45,25 @@ describe('describeBleError', () => {
   it('translates the known Chrome failures', () => {
     expect(describeBleError(new DOMException('Connection already in progress.', 'NetworkError'))).toMatch(/conexão anterior/);
     expect(describeBleError(new DOMException('x', 'TimeoutError'))).toMatch(/não respondeu/);
-    expect(describeBleError(new DOMException('GATT Server is disconnected.', 'NetworkError'))).toMatch(/perdida/);
+    expect(describeBleError(new DOMException('GATT Server is disconnected.', 'NetworkError'))).toMatch(/remova o pareamento/);
     expect(describeBleError(new Error('outro'))).toBe('outro');
+  });
+});
+
+describe('retryOnNetworkError', () => {
+  const instant = () => Promise.resolve();
+  it('retries a step that loses the link, then succeeds', async () => {
+    let n = 0;
+    const step = () => (++n < 3 ? Promise.reject(new DOMException('GATT Server is disconnected.', 'NetworkError')) : Promise.resolve('ok'));
+    await expect(retryOnNetworkError(step, instant)).resolves.toBe('ok');
+    expect(n).toBe(3);
+  });
+  it('does not retry other errors, and stops after 3 network failures', async () => {
+    let n = 0;
+    await expect(retryOnNetworkError(() => (n++, Promise.reject(new Error('x'))), instant)).rejects.toThrow('x');
+    expect(n).toBe(1);
+    n = 0;
+    await expect(retryOnNetworkError(() => (n++, Promise.reject(new DOMException('d', 'NetworkError'))), instant)).rejects.toThrow();
+    expect(n).toBe(3);
   });
 });

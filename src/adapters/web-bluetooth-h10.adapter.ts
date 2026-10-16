@@ -41,11 +41,16 @@ export class WebBluetoothH10Adapter extends SensorBase {
       this.device = device;
       device.removeEventListener('gattserverdisconnected', this.handleDisconnect);
       device.addEventListener('gattserverdisconnected', this.handleDisconnect);
-      const server = await connectGatt(device);
-
-      const hrChar = await (await server.getPrimaryService(HR_SERVICE)).getCharacteristic(HR_MEASUREMENT);
-      hrChar.addEventListener('characteristicvaluechanged', this.handleHr);
-      await hrChar.startNotifications();
+      // On Windows the link often drops during service discovery right after connect
+      // ("GATT Server is disconnected"); the whole connect + subscribe step is retried.
+      const server = await retryOnNetworkError(async () => {
+        const srv = await connectGatt(device);
+        const hrChar = await (await srv.getPrimaryService(HR_SERVICE)).getCharacteristic(HR_MEASUREMENT);
+        hrChar.removeEventListener('characteristicvaluechanged', this.handleHr);
+        hrChar.addEventListener('characteristicvaluechanged', this.handleHr);
+        await hrChar.startNotifications();
+        return srv;
+      });
 
       this.server = server;
       this.deviceName = device.name ?? 'Polar H10';
@@ -223,7 +228,25 @@ export function describeBleError(err: unknown): string {
   if (name === 'TimeoutError' || /timed? ?out/i.test(msg)) {
     return 'A cinta não respondeu. Umedeça os eletrodos, encaixe o sensor e tente de novo.';
   }
-  if (name === 'NetworkError') return 'Conexão Bluetooth perdida. Aproxime a cinta do computador e tente de novo.';
+  if (name === 'NetworkError') {
+    return 'Conexão Bluetooth caiu. Se a cinta aparece como "Conectado" nas configurações de Bluetooth do sistema, remova o pareamento lá e tente de novo.';
+  }
   if (name === 'SecurityError') return 'O navegador bloqueou o Bluetooth. Abra pelo endereço localhost ou https.';
   return msg;
+}
+
+/** Retries a GATT setup step when the link drops mid-way (NetworkError), up to 3 times. */
+export async function retryOnNetworkError<T>(
+  step: () => Promise<T>,
+  wait: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await step();
+    } catch (err) {
+      const network = err instanceof DOMException && err.name === 'NetworkError';
+      if (!network || attempt >= 3) throw err;
+      await wait(800 * attempt);
+    }
+  }
 }
