@@ -14,29 +14,47 @@ export function isWebBluetoothAvailable(): boolean {
   return typeof navigator !== 'undefined' && navigator.bluetooth !== undefined;
 }
 
+/** Window after a PMD request in which a link drop is blamed on PMD. */
+const PMD_BLAME_MS = 2000;
+const MAX_AUTO_RECONNECTS = 3;
+
+/**
+ * Connection strategy, driven by field logs from Windows:
+ * 1. Connect and subscribe to HR only. HR + R-R are the core of the app.
+ * 2. Start ECG/ACC only after the first HR packet, so a PMD problem can never block HR.
+ * 3. If the link drops right after a PMD request, PMD is disabled for this session and the
+ *    adapter reconnects HR-only on its own. Other unexpected drops also auto-reconnect.
+ */
 export class WebBluetoothH10Adapter extends SensorBase implements DiagnosticsSource {
   readonly label = 'Polar H10';
   private device: BluetoothDevice | null = null;
-  private connecting = false;
   private server: BluetoothRemoteGATTServer | null = null;
+  private deviceName = 'Polar H10';
+  /** True while connect() or an auto-reconnect owns the link; disconnect events are deferred. */
+  private connecting = false;
+  private linkLostWhileConnecting = false;
+  private userDisconnect = false;
+  private reconnectsInARow = 0;
+  private gotHr = false;
+
   private pmd: 'off' | 'starting' | 'on' = 'off';
+  private pmdBreaksLink = false;
+  private pmdRequestedAt = -Infinity;
   private pmdRetries = 0;
-  private pmdLastTry = 0;
   private pmdControl: BluetoothRemoteGATTCharacteristic | null = null;
   private pendingResponse: ((r: PmdControlResponse) => void) | null = null;
-  private userDisconnect = false;
-  private linkLostWhileConnecting = false;
+
   private readonly log: string[] = [];
   private logStart = 0;
 
   diagnostics(): readonly string[] {
-    return [`${navigator.userAgent}`, ...this.log];
+    return [navigator.userAgent, ...this.log];
   }
 
   private step(text: string): void {
     const line = `+${Math.round(performance.now() - this.logStart)} ms  ${text}`;
     this.log.push(line);
-    if (this.log.length > 200) this.log.shift();
+    if (this.log.length > 300) this.log.shift();
     console.info('[openPulse BLE]', line);
   }
 
@@ -49,7 +67,10 @@ export class WebBluetoothH10Adapter extends SensorBase implements DiagnosticsSou
     if (this.connecting) return; // a second click must not start a parallel GATT connect
     this.connecting = true;
     this.userDisconnect = false;
-    this.linkLostWhileConnecting = false;
+    this.pmdBreaksLink = false;
+    this.pmdRetries = 0;
+    this.pmdRequestedAt = -Infinity;
+    this.reconnectsInARow = 0;
     this.log.length = 0;
     this.logStart = performance.now();
     this.step('requestDevice');
@@ -61,38 +82,14 @@ export class WebBluetoothH10Adapter extends SensorBase implements DiagnosticsSou
       });
       this.step(`escolhido: ${device.name ?? '?'}`);
       this.device = device;
+      this.deviceName = device.name ?? 'Polar H10';
       device.removeEventListener('gattserverdisconnected', this.handleDisconnect);
       device.addEventListener('gattserverdisconnected', this.handleDisconnect);
-      // On Windows the link often drops during service discovery right after connect
-      // ("GATT Server is disconnected"); the whole connect + subscribe step is retried.
-      const server = await retryOnNetworkError(async () => {
-        this.linkLostWhileConnecting = false;
-        this.step('gatt.connect');
-        const srv = await connectGatt(device, undefined, (m) => this.step(m));
-        this.step('conectado; serviço FC');
-        const hrChar = await (await srv.getPrimaryService(HR_SERVICE)).getCharacteristic(HR_MEASUREMENT);
-        this.step('notificações FC');
-        hrChar.removeEventListener('characteristicvaluechanged', this.handleHr);
-        hrChar.addEventListener('characteristicvaluechanged', this.handleHr);
-        await hrChar.startNotifications();
-        this.step('FC assinada');
-        return srv;
-      });
-
-      this.server = server;
-      this.deviceName = device.name ?? 'Polar H10';
-      // HR + R-R alone are enough to train with; a PMD failure downgrades instead of aborting
-      // and is retried once the strap reports skin contact.
-      this.pmd = 'off';
-      this.pmdRetries = 0;
-      await this.tryStartPmd();
-      // The link can drop during PMD setup; the disconnect event was swallowed while connecting.
-      if (this.linkLostWhileConnecting || !server.connected) {
-        throw new DOMException('Link caiu logo após conectar', 'NetworkError');
-      }
-      this.step('pronto');
+      await this.openHrLink(device);
+      this.step('pronto (FC); ECG começa após o primeiro batimento');
+      this.setStatus({ state: 'streaming', deviceName: this.statusName() });
     } catch (err) {
-      this.step(`falhou: ${err instanceof DOMException ? err.name + ': ' : ''}${err instanceof Error ? err.message : String(err)}`);
+      this.step(`falhou: ${errText(err)}`);
       this.device?.gatt?.disconnect();
       this.device = null;
       // User closing the chooser is not an error worth shouting about; other NotFoundErrors are.
@@ -103,23 +100,52 @@ export class WebBluetoothH10Adapter extends SensorBase implements DiagnosticsSou
     }
   }
 
-  private deviceName = 'Polar H10';
+  /** Connects and subscribes to HR. On Windows the link often drops during discovery; retried. */
+  private async openHrLink(device: BluetoothDevice): Promise<void> {
+    this.gotHr = false;
+    this.server = await retryOnNetworkError(async () => {
+      this.linkLostWhileConnecting = false;
+      this.step('gatt.connect');
+      const srv = await connectGatt(device, undefined, (m) => this.step(m));
+      this.step('conectado; serviço FC');
+      const hrChar = await (await srv.getPrimaryService(HR_SERVICE)).getCharacteristic(HR_MEASUREMENT);
+      this.step('notificações FC');
+      hrChar.removeEventListener('characteristicvaluechanged', this.handleHr);
+      hrChar.addEventListener('characteristicvaluechanged', this.handleHr);
+      await hrChar.startNotifications();
+      if (this.linkLostWhileConnecting || !srv.connected) {
+        throw new DOMException('Link caiu durante a assinatura da FC', 'NetworkError');
+      }
+      this.step('FC assinada');
+      return srv;
+    });
+    this.pmd = 'off';
+    this.pmdControl = null; // characteristics from a previous link need fresh subscriptions
+  }
+
+  private statusName(): string {
+    if (this.pmdBreaksLink) return `${this.deviceName} · só FC (ECG derruba a conexão neste PC)`;
+    return this.deviceName;
+  }
 
   private async tryStartPmd(): Promise<void> {
-    if (!this.server || this.pmd !== 'off') return;
+    if (!this.server || this.pmd !== 'off' || this.pmdBreaksLink) return;
     this.pmd = 'starting';
-    this.pmdLastTry = performance.now();
+    this.pmdRequestedAt = performance.now();
     this.step('iniciando ECG/ACC');
     try {
       await this.startPmd(this.server);
       this.pmd = 'on';
       this.step('ECG/ACC ativos');
-      this.setStatus({ state: 'streaming', deviceName: this.deviceName });
+      this.setStatus({ state: 'streaming', deviceName: this.statusName() });
     } catch (err) {
       this.pmd = 'off';
-      const reason = err instanceof Error ? err.message : String(err);
-      this.step(`ECG/ACC falhou: ${reason}`);
-      this.setStatus({ state: 'streaming', deviceName: `${this.deviceName} · sem ECG (${reason})` });
+      this.step(`ECG/ACC falhou: ${errText(err)}`);
+      // If the link is going down because of this request, handleDisconnect sets the status.
+      if (this.server?.connected) {
+        const reason = err instanceof Error ? err.message : String(err);
+        this.setStatus({ state: 'streaming', deviceName: `${this.deviceName} · sem ECG (${reason})` });
+      }
     }
   }
 
@@ -137,7 +163,7 @@ export class WebBluetoothH10Adapter extends SensorBase implements DiagnosticsSou
     }
     await this.command(control, PMD_START_ECG, 'ECG');
     // ACC is optional for now; ECG alone is worth keeping.
-    await this.command(control, PMD_START_ACC, 'ACC').catch((err: unknown) => console.warn('ACC not started:', err));
+    await this.command(control, PMD_START_ACC, 'ACC').catch((err: unknown) => this.step(`ACC não iniciou: ${errText(err)}`));
   }
 
   /** Writes a command and waits for its indication; "already running" counts as success. */
@@ -184,23 +210,60 @@ export class WebBluetoothH10Adapter extends SensorBase implements DiagnosticsSou
   private readonly handleDisconnect = (): void => {
     this.step('gattserverdisconnected');
     if (this.connecting) {
-      this.linkLostWhileConnecting = true; // connect() decides what to do with it
+      this.linkLostWhileConnecting = true; // the connect/reconnect loop decides what to do
       return;
     }
-    this.device = null;
     this.server = null;
     this.pmdControl = null;
     this.pmd = 'off';
-    if (this.userDisconnect) this.setStatus({ state: 'idle' });
-    else this.setStatus({ state: 'error', message: 'A cinta desconectou. Clique em Conectar para retomar.' });
+    if (this.userDisconnect || !this.device) {
+      this.device = null;
+      this.setStatus({ state: 'idle' });
+      return;
+    }
+    if (performance.now() - this.pmdRequestedAt < PMD_BLAME_MS && !this.pmdBreaksLink) {
+      this.pmdBreaksLink = true;
+      this.step('ECG/ACC derrubou a conexão; seguindo só com FC');
+    }
+    void this.autoReconnect(this.device);
   };
+
+  /** Keeps the session alive across drops: status stays 'streaming' so recording continues. */
+  private async autoReconnect(device: BluetoothDevice): Promise<void> {
+    if (this.reconnectsInARow >= MAX_AUTO_RECONNECTS) {
+      this.step('desistindo após reconexões seguidas sem dados');
+      this.device = null;
+      this.setStatus({ state: 'error', message: 'A cinta caiu várias vezes seguidas. Clique em Conectar para tentar de novo.' });
+      return;
+    }
+    this.reconnectsInARow++;
+    this.connecting = true;
+    this.setStatus({ state: 'streaming', deviceName: `${this.deviceName} · reconectando…` });
+    try {
+      await this.openHrLink(device);
+      this.step(`reconectado (${this.reconnectsInARow})`);
+      this.setStatus({ state: 'streaming', deviceName: this.statusName() });
+    } catch (err) {
+      this.step(`reconexão falhou: ${errText(err)}`);
+      this.device = null;
+      this.setStatus({ state: 'error', message: describeBleError(err) });
+    } finally {
+      this.connecting = false;
+    }
+  }
 
   private readonly handleHr = (e: Event): void => {
     const view = (e.target as BluetoothRemoteGATTCharacteristic).value;
     if (!view) return;
     const m = parseHeartRateMeasurement(view);
-    // ECG refuses to start without skin contact; retry once contact appears, at most every 10 s.
-    if (this.pmd === 'off' && m.contact !== false && this.pmdRetries < 5 && performance.now() - this.pmdLastTry > 10_000) {
+    if (!this.gotHr) {
+      this.gotHr = true;
+      this.reconnectsInARow = 0;
+      this.step(`primeiro pacote FC: ${m.bpm} bpm, ${m.rrMs.length} R-R, contato=${m.contact}`);
+    }
+    // ECG needs skin contact; try after the first HR packet, then at most every 10 s, 5 times.
+    if (this.pmd === 'off' && !this.pmdBreaksLink && m.contact !== false && this.pmdRetries < 5
+      && performance.now() - this.pmdRequestedAt > 10_000) {
       this.pmdRetries++;
       void this.tryStartPmd();
     }
@@ -220,6 +283,10 @@ export class WebBluetoothH10Adapter extends SensorBase implements DiagnosticsSou
       console.warn('PMD frame dropped:', err);
     }
   };
+}
+
+function errText(err: unknown): string {
+  return `${err instanceof DOMException ? err.name + ': ' : ''}${err instanceof Error ? err.message : String(err)}`;
 }
 
 const CONNECT_ATTEMPTS = 3;
