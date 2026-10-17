@@ -97,6 +97,19 @@ function prominenceNear(s: Spectrum, f: number, tol: number): number {
   return p?.prominence ?? 0;
 }
 
+/**
+ * A real rhythm at f: prominent, and a local maximum — at least twice the power found a
+ * little further out on both sides. Without the second test, leakage from a strong nearby
+ * component (deep breathing at 0.4 Hz) passes for a peak at 0.75 Hz.
+ */
+function hasPeakAt(s: Spectrum, f: number): boolean {
+  const centre = peakOf(s, f - 0.04, f + 0.04);
+  if (!centre || centre.prominence < MIN_PROMINENCE) return false;
+  const left = peakOf(s, f - 0.2, f - 0.12)?.prominence ?? 0;
+  const right = peakOf(s, f + 0.12, f + 0.2)?.prominence ?? 0;
+  return centre.prominence >= 2 * left && centre.prominence >= 2 * right;
+}
+
 /** Maps prominence 15 → 0 and ≥300 → 1 on a log scale. */
 function confidence(prominence: number): number {
   return Math.max(0, Math.min(1, (Math.log10(prominence) - 1.18) / 1.3));
@@ -119,7 +132,7 @@ export function estimateCadence(axes: readonly ArrayLike<number>[], fs: number):
   const top = strongest as { axis: number; peak: Peak } | null;
   if (!top || top.peak.prominence < MIN_PROMINENCE) return null;
   const F = top.peak.freq;
-  const present = (f: number) => f >= CRANK_MIN_HZ && f <= SPECTRUM_MAX_HZ && spectra.some((s) => prominenceNear(s, f, 0.04) >= MIN_PROMINENCE);
+  const present = (f: number) => f >= CRANK_MIN_HZ && f <= SPECTRUM_MAX_HZ && spectra.some((s) => hasPeakAt(s, f));
 
   let crank: number;
   let conf: number;

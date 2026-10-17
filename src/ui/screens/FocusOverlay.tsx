@@ -51,7 +51,7 @@ export function FocusOverlay({ onClose }: { onClose: () => void }) {
         <div><span>α1</span><b className="num" style={{ color: 'var(--sig-dfa)' }}>{fmt(s.dfa?.alpha1 ?? null, 2)}</b><em>{alphaNote(s.dfa)}</em></div>
         <div><span>Respiração</span><b className="num" style={{ color: 'var(--sig-breath)' }}>{fmt(breath)}</b><em>irpm · est.</em></div>
         <div><span>Cadência</span><b className="num" style={{ color: 'var(--sig-cadence)' }}>{fmt(rpm)}</b><em>rpm · est.</em></div>
-        <div><span>Estado</span><b style={{ fontSize: 22 }}>{w.state === 'running' ? 'Gravando' : 'Pausado'}</b><em>{w.markers} voltas</em></div>
+        <div><span>Estado</span><b style={{ fontSize: 22 }}>{w.state === 'running' ? 'Gravando' : 'Pausado'}</b><em>{w.markers === 1 ? '1 volta' : `${w.markers} voltas`}</em></div>
       </div>
     </div>
   );

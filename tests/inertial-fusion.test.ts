@@ -39,6 +39,14 @@ describe('estimateCadence', () => {
     expect(c!.crankHz * 60).toBeCloseTo(84, 0);
     expect(c!.lateralAxis).toBe(2);
   });
+  it('deep breathing on the chest axis does not pass for a sub-harmonic (no false halving)', () => {
+    const c = estimateCadence(
+      [add(sine(n, fs, 1.5, 25), noise(n, 4, 1)), add(sine(n, fs, 3, 12), noise(n, 4, 2)), add(sine(n, fs, 0.45, 40), noise(n, 4, 3))],
+      fs,
+    );
+    expect(c!.crankHz * 60).toBeCloseTo(90, 0);
+  });
+
   it('returns null when there is no rhythm', () => {
     expect(estimateCadence([noise(n, 10, 1), noise(n, 10, 2), noise(n, 10, 3)], fs)).toBeNull();
   });

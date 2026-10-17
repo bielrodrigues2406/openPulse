@@ -8,15 +8,17 @@ export interface Frame {
 }
 
 /**
- * Sizes the canvas to its box at device pixel ratio and draws. live = every animation frame
- * (streaming data); otherwise only on resize and when `version` changes.
+ * Sizes the canvas to its box at device pixel ratio and draws. live = on animation frames,
+ * capped at `fps` (trend charts don't need 60 fps; the ECG sweep does); otherwise only on
+ * resize and when `version` changes.
  */
-export function useCanvasLoop(draw: (frame: Frame) => void, opts: { live?: boolean; version?: unknown } = {}) {
+export function useCanvasLoop(draw: (frame: Frame) => void, opts: { live?: boolean; version?: unknown; fps?: number } = {}) {
   const ref = useRef<HTMLCanvasElement>(null);
   const drawRef = useRef(draw);
   drawRef.current = draw;
   const redrawRef = useRef<() => void>(() => {});
   const live = opts.live ?? true;
+  const minGap = 1000 / (opts.fps ?? 60) - 2;
 
   useEffect(() => {
     const canvas = ref.current;
@@ -25,7 +27,13 @@ export function useCanvasLoop(draw: (frame: Frame) => void, opts: { live?: boole
     let width = 0;
     let height = 0;
     const styles = getComputedStyle(canvas);
-    const color = (token: string) => (token.startsWith('--') ? styles.getPropertyValue(token).trim() : token);
+    const cache = new Map<string, string>();
+    const color = (token: string) => {
+      if (!token.startsWith('--')) return token;
+      let v = cache.get(token);
+      if (v === undefined) cache.set(token, (v = styles.getPropertyValue(token).trim()));
+      return v;
+    };
     const paint = () => {
       if (width <= 0 || height <= 0) return;
       ctx.clearRect(0, 0, width, height);
@@ -47,8 +55,12 @@ export function useCanvasLoop(draw: (frame: Frame) => void, opts: { live?: boole
 
     let raf = 0;
     if (live) {
-      const loop = () => {
-        paint();
+      let last = -Infinity;
+      const loop = (now: number) => {
+        if (now - last >= minGap) {
+          last = now;
+          paint();
+        }
         raf = requestAnimationFrame(loop);
       };
       raf = requestAnimationFrame(loop);
@@ -57,7 +69,7 @@ export function useCanvasLoop(draw: (frame: Frame) => void, opts: { live?: boole
       cancelAnimationFrame(raf);
       resize.disconnect();
     };
-  }, [live]);
+  }, [live, minGap]);
 
   useEffect(() => {
     if (!live) redrawRef.current();

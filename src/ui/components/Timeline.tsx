@@ -47,7 +47,7 @@ const ZONE_TOKEN: Record<Zone, string> = { 1: '--z1', 2: '--z2', 3: '--z3' };
 
 /** One time-series canvas for live and stored data: grid, references, phases, gaps, lines. */
 export function Timeline(p: TimelineProps) {
-  const ref = useCanvasLoop((f) => paint(f, p), { live: p.live ?? true, version: p.version });
+  const ref = useCanvasLoop((f) => paint(f, p), { live: p.live ?? true, version: p.version, fps: 4 });
   return (
     <div className="canvas-box" style={{ height: p.height ?? 180 }}>
       <canvas ref={ref} aria-label={p.label} />
@@ -175,26 +175,35 @@ function paint({ ctx, width, height, color }: Frame, p: TimelineProps): void {
       }
       return;
     }
+    // One path per run of equal colour: a 2 h session is thousands of points.
     let prev: TimePoint | null = null;
+    let pathColor: string | null = null;
+    const flush = () => {
+      if (pathColor !== null) ctx.stroke();
+      pathColor = null;
+    };
     for (const q of pts) {
-      if (q.t < x0 - 30 || q.t > x1 + 30) {
-        prev = null;
-        continue;
-      }
-      if (q.v === null) {
+      if (q.t < x0 - 30 || q.t > x1 + 30 || q.v === null) {
         prev = null;
         continue;
       }
       if (prev && prev.v !== null) {
-        ctx.strokeStyle = color(s.colorOf ? s.colorOf(q.v) : s.color);
-        ctx.beginPath();
-        ctx.moveTo(X(prev.t), Y(clamp(prev.v, min, max)));
+        const c = color(s.colorOf ? s.colorOf(q.v) : s.color);
+        if (c !== pathColor) {
+          flush();
+          ctx.strokeStyle = c;
+          ctx.beginPath();
+          ctx.moveTo(X(prev.t), Y(clamp(prev.v, min, max)));
+          pathColor = c;
+        }
         ctx.lineTo(X(q.t), Y(clamp(q.v, min, max)));
-        ctx.stroke();
         drew = true;
+      } else {
+        flush();
       }
       prev = q;
     }
+    flush();
   });
   ctx.setLineDash([]);
 

@@ -12,13 +12,9 @@
     "desktop": "npm run build && tsc -p electron/tsconfig.json && electron .",
     "desktop:dist": "npm run build && tsc -p electron/tsconfig.json && electron-builder --win --x64"
   },
-  "dependencies": {
+  "devDependencies": {
     "@fontsource/ibm-plex-mono": "5.2.5",
     "@fontsource/ibm-plex-sans": "5.2.5",
-    "react": "19.1.0",
-    "react-dom": "19.1.0"
-  },
-  "devDependencies": {
     "@types/node": "22.20.5",
     "@types/react": "19.1.8",
     "@types/react-dom": "19.1.6",
@@ -27,6 +23,8 @@
     "electron-builder": "26.0.20",
     "fake-indexeddb": "6.0.0",
     "fit-file-parser": "6.2.2",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
     "typescript": "5.8.3",
     "vite": "6.3.5",
     "vitest": "3.2.4"
