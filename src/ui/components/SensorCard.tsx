@@ -33,13 +33,18 @@ export function SensorCard({ compact = false }: { compact?: boolean }) {
   }
 
   const diag = hub.diagnostics();
-  const canRepair = desktopBridge !== undefined && h.source === 'h10' && !live && !busy;
+  const native = hub.repairable();
+  const noEcg = live && s.deviceName.includes('sem ECG');
+  const canRepair = h.source === 'h10' && !busy && (native !== null || (desktopBridge !== undefined && !live))
+    && (s.state === 'error' || noEcg);
   const repair = async () => {
-    if (!desktopBridge) return;
     setRepairing(true);
     try {
-      const { ok, lines } = await desktopBridge.repairPairing();
-      toast(ok ? `Pareamento refeito · ${lines.at(-1) ?? ''}` : `Não deu para refazer o pareamento: ${lines.at(-1) ?? 'erro'}`);
+      if (native) await native.repairPairing();
+      else if (desktopBridge) {
+        const { ok, lines } = await desktopBridge.repairPairing();
+        toast(ok ? 'Pareamento removido; conectando de novo' : `Não deu para refazer o pareamento: ${lines.at(-1) ?? 'erro'}`);
+      }
     } finally {
       setRepairing(false);
     }
@@ -61,7 +66,7 @@ export function SensorCard({ compact = false }: { compact?: boolean }) {
       <button className={live ? 'btn' : 'btn primary'} onClick={toggle} disabled={busy}>
         {live ? 'Desconectar' : busy ? 'Conectando…' : 'Conectar cinta'}
       </button>
-      {canRepair && s.state === 'error' && (
+      {canRepair && (
         <button className="btn" style={{ marginTop: 8 }} onClick={() => void repair()} disabled={repairing}>
           {repairing ? 'Refazendo pareamento…' : 'Refazer pareamento'}
         </button>
@@ -70,7 +75,7 @@ export function SensorCard({ compact = false }: { compact?: boolean }) {
         <button className="linkish" disabled={live || busy} onClick={() => hub.setSource(h.source === 'sim' ? 'h10' : 'sim')}>
           {h.source === 'sim' ? 'Usar Polar H10' : 'Usar simulador'}
         </button>
-        {diag && s.state === 'error' && (
+        {diag && (s.state === 'error' || noEcg) && (
           <button
             className="linkish"
             onClick={() => void navigator.clipboard.writeText(diag.join('\n')).then(() => { setCopied(true); toast('Diagnóstico copiado'); })}

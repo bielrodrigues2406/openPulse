@@ -1,4 +1,4 @@
-import type { DiagnosticsSource, PolarSensor, SensorStatus } from '../domain/ports/polar-sensor.port';
+import type { DiagnosticsSource, PolarSensor, RepairableSensor, SensorStatus } from '../domain/ports/polar-sensor.port';
 
 export type SourceKind = 'h10' | 'sim';
 
@@ -35,6 +35,11 @@ export class SensorHub {
   diagnostics(): readonly string[] | null {
     const d = this.sensor as Partial<DiagnosticsSource>;
     return typeof d.diagnostics === 'function' ? d.diagnostics() : null;
+  }
+
+  /** Present when the current adapter can redo its Bluetooth pairing by itself. */
+  repairable(): RepairableSensor | null {
+    return isRepairable(this.sensor) ? this.sensor : null;
   }
 
   connect(): Promise<void> {
@@ -89,4 +94,8 @@ export class SensorHub {
   private emit(): void {
     for (const l of this.listeners) l();
   }
+}
+
+function isRepairable(s: PolarSensor): s is PolarSensor & RepairableSensor {
+  return typeof (s as Partial<RepairableSensor>).repairPairing === 'function';
 }

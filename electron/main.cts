@@ -1,8 +1,9 @@
 import { BrowserWindow, Menu, app, ipcMain, net, protocol, session, shell } from 'electron';
-import { execFile } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { NativeBle, type CharKey, type NativeBleHost, type StrapInfo } from './native-ble.cjs';
+import { unpairH10 } from './windows-bt.cjs';
 
 /**
  * openPulse desktop shell. Same web app, plus what a browser tab cannot do:
@@ -19,7 +20,10 @@ const STATE_FILE = () => path.join(app.getPath('userData'), 'desktop-state.json'
 const CHOOSER_TIMEOUT_MS = 20_000;
 
 interface DesktopState {
+  /** Chromium's Web Bluetooth id (browser path). */
   deviceId: string | null;
+  /** Address of the strap opened through the native Windows stack. */
+  strap?: StrapInfo | null;
   bounds?: { width: number; height: number; x?: number; y?: number };
 }
 
@@ -52,55 +56,23 @@ if (!app.requestSingleInstanceLock()) app.quit();
 
 let win: BrowserWindow | null = null;
 
-/**
- * Windows keeps the strap's bonding keys after the strap itself has dropped them (e.g. after
- * pairing with a phone). From then on every link that needs encryption — ECG — is torn down,
- * and only "remove device + pair again" in Settings fixes it. This does the same through WinRT:
- * unpair every Polar H10, then pair it again while it is in range.
- */
-const REPAIR_SCRIPT = [
-  "$ErrorActionPreference = 'Stop'",
-  '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8',
-  'Add-Type -AssemblyName System.Runtime.WindowsRuntime',
-  "$asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]",
-  "function Await($op, [Type]$type) { $t = $asTask.MakeGenericMethod($type).Invoke($null, @($op)); if (-not $t.Wait(20000)) { throw 'o Windows não respondeu' }; $t.Result }",
-  '$null = [Windows.Devices.Enumeration.DeviceInformation, Windows.Devices.Enumeration, ContentType=WindowsRuntime]',
-  '$null = [Windows.Devices.Bluetooth.BluetoothLEDevice, Windows.Devices.Bluetooth, ContentType=WindowsRuntime]',
-  '$LE = [Windows.Devices.Bluetooth.BluetoothLEDevice]',
-  '$paired = Await ([Windows.Devices.Enumeration.DeviceInformation]::FindAllAsync($LE::GetDeviceSelectorFromPairingState($true))) ([Windows.Devices.Enumeration.DeviceInformationCollection])',
-  '$addrs = @()',
-  'foreach ($d in $paired) {',
-  "  if ($d.Name -notlike 'Polar H10*') { continue }",
-  '  $dev = Await ($LE::FromIdAsync($d.Id)) ($LE)',
-  '  if ($dev) { $addrs += $dev.BluetoothAddress; $dev.Dispose() }',
-  '  $r = Await ($d.Pairing.UnpairAsync()) ([Windows.Devices.Enumeration.DeviceUnpairingResult])',
-  '  "removido $($d.Name): $($r.Status)"',
-  '}',
-  "if ($addrs.Count -eq 0) { 'nenhuma Polar H10 pareada no Windows'; exit 0 }",
-  'Start-Sleep -Seconds 2',
-  'foreach ($a in $addrs) {',
-  '  $dev = Await ($LE::FromBluetoothAddressAsync($a)) ($LE)',
-  "  if (-not $dev) { 'cinta fora de alcance; o pareamento acontece na próxima conexão'; continue }",
-  '  $r = Await ($dev.DeviceInformation.Pairing.PairAsync()) ([Windows.Devices.Enumeration.DevicePairingResult])',
-  '  "pareado $($dev.Name): $($r.Status)"',
-  '  $dev.Dispose()',
-  '}',
-].join('\n');
+let ble: NativeBle | null = null;
 
-function repairPairing(): Promise<{ ok: boolean; lines: string[] }> {
-  if (process.platform !== 'win32') return Promise.resolve({ ok: false, lines: ['Disponível só no Windows'] });
-  const encoded = Buffer.from(REPAIR_SCRIPT, 'utf16le').toString('base64');
-  return new Promise((resolve) => {
-    execFile(
-      'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encoded],
-      { timeout: 60_000, windowsHide: true },
-      (err, stdout, stderr) => {
-        const lines = `${stdout}\n${stderr}`.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-        resolve({ ok: !err, lines: err && !lines.length ? [err.message] : lines });
-      },
-    );
-  });
+function startNativeBle(): void {
+  ble = NativeBle.load({
+    emit: (channel: string, ...args: unknown[]) => win?.webContents.send(channel, ...args),
+    remembered: () => readState().strap ?? null,
+    remember: (strap) => writeState({ strap }),
+  } as NativeBleHost);
+  if (!ble) return;
+  const b = ble;
+  ipcMain.handle('ble:open', () => b.open());
+  ipcMain.handle('ble:subscribe', (_e, key: CharKey) => b.subscribe(key));
+  ipcMain.handle('ble:write', (_e, key: CharKey, bytes: Uint8Array) => b.write(key, bytes));
+  ipcMain.handle('ble:read', (_e, key: CharKey) => b.read(key));
+  ipcMain.handle('ble:pair', () => b.pair());
+  ipcMain.handle('ble:repair', () => b.repair());
+  ipcMain.handle('ble:close', () => b.close());
 }
 
 function createWindow(): void {
@@ -190,15 +162,21 @@ app.whenReady().then(() => {
     // Web Bluetooth needs a user gesture; executeJavaScript(…, true) provides one.
     if (autoConnect) void win?.webContents.executeJavaScript('window.__openPulseAutoConnect && window.__openPulseAutoConnect()', true);
   });
-  ipcMain.on('forget-device', () => writeState({ deviceId: null }));
+  ipcMain.on('forget-device', () => writeState({ deviceId: null, strap: null }));
+  // Native Bluetooth is decided before the window loads; the preload asks synchronously.
+  ipcMain.on('ble:available', (e) => {
+    e.returnValue = ble !== null;
+  });
+  // Web Bluetooth fallback: drop the stale pairing; the reconnect below pairs again.
   ipcMain.handle('repair-pairing', async () => {
-    const result = await repairPairing();
+    const result = await unpairH10().then((lines) => ({ ok: true, lines }), (err: unknown) => ({ ok: false, lines: [String(err)] }));
     // Reconnect straight away; the click that started this is no longer a valid user gesture.
     void win?.webContents.executeJavaScript('window.__openPulseAutoConnect && window.__openPulseAutoConnect()', true);
     return result;
   });
   ipcMain.on('show-file', (_e, file: string) => shell.showItemInFolder(file));
 
+  startNativeBle();
   createWindow();
 });
 

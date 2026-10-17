@@ -16,6 +16,7 @@ import { SensorHub, type SourceKind } from './app/sensor-hub';
 import { LibraryRepository, MorningRepository, SessionRepository, openDb } from './adapters/storage';
 import { SimulatedH10Adapter } from './adapters/simulated-h10.adapter';
 import { WebBluetoothH10Adapter, isWebBluetoothAvailable } from './adapters/web-bluetooth-h10.adapter';
+import { NativeH10Adapter } from './adapters/native-h10.adapter';
 import { zoneBounds } from './domain/athlete/profile';
 import type { DspRequest, DspResponse, Tagged } from './workers/dsp.protocol';
 import { AppData } from './ui/app-data';
@@ -36,8 +37,13 @@ function build(): Services {
   const data = new AppData(new SessionRepository(db), new LibraryRepository(db), new MorningRepository(db));
   const cues = new Cues();
   const live = new LiveSession(data.sessionsRepo, createDsp(), cues);
-  const initial: SourceKind = isWebBluetoothAvailable() ? 'h10' : 'sim';
-  const hub = new SensorHub(initial, (k) => (k === 'h10' ? new WebBluetoothH10Adapter() : new SimulatedH10Adapter()));
+  // Desktop on Windows talks to the strap through Windows' own Bluetooth; one instance, since it
+  // listens on the shell's IPC channels for its whole life.
+  const nativeBle = desktopBridge?.ble;
+  const native = nativeBle ? new NativeH10Adapter(nativeBle) : null;
+  const strapAvailable = native !== null || isWebBluetoothAvailable();
+  const initial: SourceKind = strapAvailable ? 'h10' : 'sim';
+  const hub = new SensorHub(initial, (k) => (k === 'sim' ? new SimulatedH10Adapter() : native ?? new WebBluetoothH10Adapter()));
   live.attach(hub.current(), hub.getSnapshot().source);
   hub.onSwap((s) => live.attach(s, hub.getSnapshot().source));
   const morning = new MorningTest((r) => data.addMorning(r), cues);
@@ -54,7 +60,7 @@ function build(): Services {
   void data.load().then(() => {
     const d = data.getSnapshot();
     live.setBounds(zoneBounds(d.profile));
-    const wanted = d.settings.source === 'h10' && !isWebBluetoothAvailable() ? 'sim' : d.settings.source;
+    const wanted = d.settings.source === 'h10' && !strapAvailable ? 'sim' : d.settings.source;
     hub.setSource(wanted);
     desktopBridge?.ready(d.settings.autoConnect && wanted === 'h10');
   });

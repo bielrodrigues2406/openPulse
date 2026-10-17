@@ -19,10 +19,15 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      # The native Windows Bluetooth binding (prebuilt N-API) must load on Windows.
+      - run: node -e "require('@stoprocent/noble/lib/resolve-bindings')('win'); console.log('native BLE binding ok')"
       - run: npm run typecheck
       - run: npm run desktop:dist
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Native binding is in the package
+        shell: bash
+        run: test -f "release/win-unpacked/resources/app.asar.unpacked/node_modules/@stoprocent/noble/prebuilds/win32-x64/node.napi.node"
       - uses: actions/upload-artifact@v4
         with:
           name: openPulse-windows

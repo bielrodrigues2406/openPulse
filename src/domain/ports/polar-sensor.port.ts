@@ -17,6 +17,11 @@ export interface DiagnosticsSource {
   diagnostics(): readonly string[];
 }
 
+/** A sensor whose Bluetooth pairing the app can remove and redo (desktop, Windows). */
+export interface RepairableSensor {
+  repairPairing(): Promise<void>;
+}
+
 export interface PolarSensor {
   readonly label: string;
   connect(): Promise<void>;

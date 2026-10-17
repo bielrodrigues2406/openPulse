@@ -1,3 +1,5 @@
+import type { NativeBleTransport } from '../adapters/native-h10.adapter';
+
 /**
  * Bridge to the Electron shell (see electron/preload.cts). Absent in the browser/PWA,
  * so every use is optional.
@@ -9,8 +11,10 @@ export interface DesktopBridge {
   showFile(path: string): void;
   /** Forget the remembered strap so the next connect picks again. */
   forgetDevice(): void;
-  /** Windows only: removes and redoes the strap's Bluetooth pairing, then reconnects. */
+  /** Web Bluetooth path, Windows only: removes the strap's pairing, then reconnects (which pairs again). */
   repairPairing(): Promise<{ ok: boolean; lines: string[] }>;
+  /** Windows' own Bluetooth stack; absent elsewhere (the app then uses Web Bluetooth). */
+  ble?: NativeBleTransport;
 }
 
 declare global {

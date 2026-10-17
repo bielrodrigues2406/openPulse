@@ -68,7 +68,14 @@
       "target": "AppImage",
       "icon": "build/icon.png",
       "category": "Sports"
-    }
+    },
+    "npmRebuild": false,
+    "asarUnpack": [
+      "**/node_modules/@stoprocent/noble/**"
+    ]
   },
-  "author": "openPulse"
+  "author": "openPulse",
+  "dependencies": {
+    "@stoprocent/noble": "^2.8.0"
+  }
 }

@@ -12,8 +12,18 @@ Everything stays on your device.
 
 ### Desktop app (Windows) — recommended
 
-No browser, no device chooser: the app remembers your strap, answers the Bluetooth pairing prompt
-itself and can connect on launch. Exports go straight to `Documents\openPulse`.
+No browser, no device chooser. On Windows the app talks to the strap through Windows' own
+Bluetooth stack (WinRT, via [@stoprocent/noble](https://www.npmjs.com/package/@stoprocent/noble))
+instead of Chromium's Web Bluetooth:
+
+- it opens the strap by address, even while Windows itself holds the link (a connected strap stops
+  advertising, which is why the browser kept "searching");
+- it pairs by itself when ECG needs encryption — no "Adicionar um dispositivo" notification;
+- when the pairing goes stale (Windows kept keys the strap dropped: ECG is refused, or the link
+  dies right after connecting) it removes the pairing and pairs again, once per connection.
+  **Refazer pareamento** (sensor card / Perfil) does the same on demand.
+
+It remembers your strap and can connect on launch. Exports go straight to `Documents\openPulse`.
 
 ```sh
 npm install
@@ -36,8 +46,9 @@ Data is stored per origin: moving from the browser to the desktop app goes throu
 
 ### First connection on Windows
 
-If the strap connects but drops right away, Windows wants to pair it. The desktop app confirms the
-pairing on its own; in a browser, accept the "Adicionar um dispositivo" notification once.
+The desktop app handles pairing itself (see above); there is no need to remove the strap in
+Windows settings. In a browser, if the strap connects but drops right away, Windows wants to pair
+it: accept the "Adicionar um dispositivo" notification once.
 The strap allows two connections at a time; close Polar Flow (or turn off the phone's Bluetooth)
 if it is connected elsewhere.
 
@@ -81,7 +92,7 @@ src/app/         live session, morning test, sensor hub, audio cues
 src/adapters/    Web Bluetooth H10, simulator, IndexedDB storage
 src/workers/     DFA + inertial DSP worker
 src/ui/          React screens, canvas charts
-electron/        desktop shell (main + preload)
+electron/        desktop shell (main + preload, native Windows Bluetooth)
 ```
 
 The simulator (Perfil → Fonte de dados) is deterministic: a 15-minute ramp where α1 falls through

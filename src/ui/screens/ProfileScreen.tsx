@@ -118,10 +118,12 @@ export function ProfileScreen() {
                 <span>Pareamento no Windows <span className="dim">· quando a cinta cai logo ao conectar ou o ECG não vem</span></span>
                 <button
                   className="btn sm"
-                  disabled={h.status.state === 'streaming' || h.status.state === 'connecting'}
+                  disabled={h.status.state === 'connecting' || (h.status.state === 'streaming' && !hub.repairable())}
                   onClick={() => {
                     toast('Refazendo o pareamento…');
-                    void desktopBridge?.repairPairing().then(({ ok, lines }) => toast(ok ? `Pareamento refeito · ${lines.at(-1) ?? ''}` : `Não deu: ${lines.at(-1) ?? 'erro'}`));
+                    const native = hub.repairable();
+                    if (native) void native.repairPairing();
+                    else void desktopBridge?.repairPairing().then(({ ok, lines }) => toast(ok ? 'Pareamento removido; conectando de novo' : `Não deu: ${lines.at(-1) ?? 'erro'}`));
                   }}
                 >
                   Refazer
