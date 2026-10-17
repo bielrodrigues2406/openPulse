@@ -204,4 +204,42 @@ describe('LiveSession', () => {
     expect(live.getSnapshot().workout!.planComplete).toBe(true);
     expect(said.at(-1)).toMatch(/Treino completo/);
   });
+
+  it('ramp steps: a lap per repeat cue, numbered apart from manual laps', async () => {
+    const { cues } = fakeCues();
+    const { strap, live } = await setup(cues);
+    const t: WorkoutTemplate = {
+      id: 'r', name: 'R', kind: 'ramp', sport: 'bike-indoor', description: '', builtIn: false,
+      phases: [phase('Rampa', 10, undefined, '', { everyS: 60, text: 'Gire.', lap: true })],
+    };
+    live.start(t, 'bike-indoor');
+    await seconds(strap, 30);
+    live.mark();
+    await seconds(strap, 100);
+    const rec = (await live.finish())!;
+    expect(rec.markers.map((m) => m.label)).toEqual(['Volta 1', 'Degrau 1', 'Degrau 2']);
+  });
+
+  it('warns when the cadence estimate stays off target, and says when the ramp has reached α1 < 0.50', async () => {
+    const { cues, said } = fakeCues();
+    const { strap, live } = await setup(cues);
+    const t: WorkoutTemplate = {
+      id: 'r', name: 'R', kind: 'ramp', sport: 'bike-indoor', description: '', builtIn: false,
+      phases: [phase('Rampa', 20, undefined, '', null, 90)],
+    };
+    live.start(t, 'bike-indoor');
+    await seconds(strap, 40);
+    // Inject what the worker would have produced: cadence 80 and α1 well below 0.5.
+    const nowS = live.offsetNow() / 1000;
+    for (let k = 0; k < 40; k++) {
+      live.inertial.push({ tS: nowS + k, breathsPerMin: null, breathSource: null, breathConfidence: 0, rpm: 80, rpmConfidence: 0.9, swayMg: 10 });
+    }
+    for (let k = -110; k < 40; k += 5) live.dfa.push({ tS: nowS + k, alpha1: 0.42, artifactPct: 0, beats: 300 });
+    await seconds(strap, 35);
+    expect(said).toContain('Cadência abaixo de 90.');
+    expect(live.getSnapshot().workout).toMatchObject({ cadenceTarget: 90, cadenceNow: 80 });
+    expect(said.some((x) => x.includes('Limiar dois alcançado'))).toBe(true);
+    expect(live.getSnapshot().workout!.rampDone).toBe(true);
+  });
 });
+

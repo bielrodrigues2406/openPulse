@@ -7,7 +7,7 @@ import { encodeFit } from '../../domain/session/fit-encoder';
 import type { SessionRecord } from '../../domain/session/recorded-session';
 import { dfaToCsv, ecgToCsv, fileStem, hrToCsv, inertialToCsv, rrToCsv, sessionToJson } from '../../domain/session/session-export';
 import { Timeline } from '../components/Timeline';
-import { Section, Segmented, Stat, ZoneDistribution } from '../components/ui';
+import { Section, Segmented, Stat, ZONE_LABEL, ZoneDistribution } from '../components/ui';
 import { download } from '../download';
 import { KIND_LABEL, SPORT_LABEL, clock, dateTime, duration, fmt, plural, signed } from '../format';
 import { go, href } from '../router';
@@ -116,7 +116,7 @@ function Detail({ rec }: { rec: SessionRecord }) {
           <Section title="Tempo por zona" meta={bounds?.estimated ? 'zonas estimadas pela FC máx' : `VT1 ${bounds?.vt1} · VT2 ${bounds?.vt2}`}>
             <ZoneDistribution seconds={n.zonesS} />
             <div className="legend" style={{ marginTop: 8 }}>
-              {n.zonesS.map((sec, i) => <span key={i} className="num">Z{i + 1} {duration(sec)}</span>)}
+              {n.zonesS.map((sec, i) => <span key={i}>{ZONE_LABEL[(i + 1) as 1 | 2 | 3]} <span className="num">{duration(sec)}</span></span>)}
             </div>
           </Section>
         )}

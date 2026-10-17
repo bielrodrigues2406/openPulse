@@ -35,6 +35,11 @@ const TICK_MS = 500;
 const TARGET_GRACE_S = 90; // HR lags and α1 needs a full window after a phase change
 const TARGET_ALERT_AFTER_S = 30;
 const TARGET_ALERT_REPEAT_S = 90;
+const CADENCE_TOLERANCE_RPM = 5;
+const CADENCE_ALERT_AFTER_S = 20;
+const CADENCE_ALERT_REPEAT_S = 60;
+/** Ramp is "done enough" once α1 has stayed under 0.50 this long: HRVT2 is in the data. */
+const RAMP_DONE_AFTER_S = 120;
 
 /** The DSP worker as the session sees it; a synchronous fake in tests. */
 export interface DspChannel {
@@ -68,6 +73,11 @@ export interface WorkoutView {
   readonly target: TargetState;
   readonly markers: number;
   readonly planComplete: boolean;
+  readonly cadenceTarget: number | null;
+  /** Latest confident cadence estimate, rpm. */
+  readonly cadenceNow: number | null;
+  /** Ramp test: α1 has been below 0.50 for 2 min; finishing now loses nothing. */
+  readonly rampDone: boolean;
 }
 
 export interface LiveSnapshot {
@@ -110,6 +120,9 @@ interface Recording {
   offTargetSince: number | null;
   lastAlertAt: number;
   planCompleteAnnounced: boolean;
+  offCadenceSince: number | null;
+  lastCadenceAlertAt: number;
+  rampDone: boolean;
 }
 
 export class LiveSession {
@@ -234,6 +247,9 @@ export class LiveSession {
       offTargetSince: null,
       lastAlertAt: -Infinity,
       planCompleteAnnounced: false,
+      offCadenceSince: null,
+      lastCadenceAlertAt: -Infinity,
+      rampDone: false,
     };
     // Start recording right away when data is flowing; otherwise the first packet opens it.
     if (this.dataFresh()) this.openSegment(0);
@@ -271,6 +287,9 @@ export class LiveSession {
       offTargetSince: null,
       lastAlertAt: -Infinity,
       planCompleteAnnounced: false,
+      offCadenceSince: null,
+      lastCadenceAlertAt: -Infinity,
+      rampDone: false,
     };
     this.cues?.say('Treino retomado.');
     if (this.dataFresh()) this.openSegment(this.offsetNow());
@@ -296,11 +315,17 @@ export class LiveSession {
   }
 
   mark(label = 'Volta'): void {
-    const r = this.recording;
-    if (!r || r.openSince === null) return;
-    r.markers.push({ tMs: this.offsetNow(), label: `${label} ${r.markers.length + 1}` });
-    this.cues?.beep('mark');
+    if (this.addMarker(label)) this.cues?.beep('mark');
     this.refreshWorkout();
+  }
+
+  /** Numbered per label: manual "Volta 1, 2…" and automatic "Degrau 1, 2…" count separately. */
+  private addMarker(label: string): boolean {
+    const r = this.recording;
+    if (!r || r.openSince === null) return false;
+    const n = r.markers.filter((m) => m.label.startsWith(`${label} `)).length + 1;
+    r.markers.push({ tMs: this.offsetNow(), label: `${label} ${n}` });
+    return true;
   }
 
   /** Stops recording and moves the session to review. Returns null when nothing was recorded. */
@@ -459,8 +484,15 @@ export class LiveSession {
     }
     if (pos.phase.repeatCue && pos.phaseElapsedS >= r.nextRepeatCueS && pos.phaseRemainingS > 5) {
       r.nextRepeatCueS += pos.phase.repeatCue.everyS;
+      if (pos.phase.repeatCue.lap) this.addMarker('Degrau');
       this.cues?.beep('mark');
       this.cues?.say(pos.phase.repeatCue.text);
+    }
+    this.runCadenceCue(r, pos);
+    if (r.workout.kind === 'ramp' && !r.rampDone && this.alphaBelowHalfFor(RAMP_DONE_AFTER_S)) {
+      r.rampDone = true;
+      this.cues?.beep('go');
+      this.cues?.say('Alfa um abaixo de 0,50 há dois minutos. Limiar dois alcançado. Pode encerrar quando quiser.');
     }
     const state = pos.phaseElapsedS < TARGET_GRACE_S ? 'unknown' : this.targetState(pos);
     const t = this.now();
@@ -474,6 +506,40 @@ export class LiveSession {
     } else {
       r.offTargetSince = null;
     }
+  }
+
+  private runCadenceCue(r: Recording, pos: PhasePosition): void {
+    const target = pos.phase.cadenceRpm;
+    const now = this.cadenceNow();
+    if (target === undefined || now === null || pos.phaseElapsedS < 30) {
+      r.offCadenceSince = null;
+      return;
+    }
+    if (Math.abs(now - target) <= CADENCE_TOLERANCE_RPM) {
+      r.offCadenceSince = null;
+      return;
+    }
+    const t = this.now();
+    r.offCadenceSince ??= t;
+    if (t - r.offCadenceSince >= CADENCE_ALERT_AFTER_S * 1000 && t - r.lastCadenceAlertAt >= CADENCE_ALERT_REPEAT_S * 1000) {
+      r.lastCadenceAlertAt = t;
+      this.cues?.beep('alert');
+      this.cues?.say(now < target ? `Cadência abaixo de ${target}.` : `Cadência acima de ${target}.`);
+    }
+  }
+
+  /** Latest cadence estimate when recent and confident; the chest strap only estimates it. */
+  private cadenceNow(): number | null {
+    const p = this.inertial.at(-1);
+    if (!p || p.rpm === null || p.rpmConfidence < 0.5 || this.offsetNow() / 1000 - p.tS > 15) return null;
+    return p.rpm;
+  }
+
+  private alphaBelowHalfFor(seconds: number): boolean {
+    const nowS = this.offsetNow() / 1000;
+    const recent = this.dfa.filter((p) => p.tS > nowS - seconds - 5);
+    if (recent.length < (seconds / 5) * 0.8) return false;
+    return recent.every((p) => p.alpha1 !== null && p.alpha1 < 0.5);
   }
 
   private targetState(pos: PhasePosition): TargetState {
@@ -620,6 +686,9 @@ export class LiveSession {
         target: position && position.phaseElapsedS >= TARGET_GRACE_S ? this.targetState(position) : 'unknown',
         markers: r.markers.length,
         planComplete: r.workout.phases.length > 0 && position === null,
+        cadenceTarget: position?.phase.cadenceRpm ?? null,
+        cadenceNow: this.cadenceNow(),
+        rampDone: r.rampDone,
       },
     });
   }

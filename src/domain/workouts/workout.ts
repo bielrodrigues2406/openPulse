@@ -1,7 +1,9 @@
 /**
  * Structured workouts. Zones follow the 3-zone polarized model anchored on the two
  * ventilatory thresholds, because that is what DFA α1 estimates:
- *   Zona 1 < VT1 ≤ Zona 2 < VT2 ≤ Zona 3.
+ *   Leve < VT1 ≤ Moderada < VT2 ≤ Intensa.
+ * They are named, not numbered, so they never collide with the 5-zone %HRmax scale athletes
+ * already speak (Polar, Garmin): "Z2" there is *Leve* here, "Z3–Z4" is *Moderada*.
  */
 
 export type Sport = 'bike-indoor' | 'run' | 'other';
@@ -16,6 +18,8 @@ export type Target =
 export interface RepeatCue {
   readonly everyS: number;
   readonly text: string;
+  /** Also mark a lap at each cue (ramp steps). Absent in templates saved before it existed. */
+  readonly lap?: boolean;
 }
 
 export interface Phase {
@@ -25,7 +29,14 @@ export interface Phase {
   /** Spoken/shown when the phase starts. */
   readonly cue: string;
   readonly repeatCue: RepeatCue | null;
+  /** Cadence to hold, rpm; the app warns when the estimate drifts away. Absent = free. */
+  readonly cadenceRpm?: number;
 }
+
+export const ZONE_NAME: Record<Zone, string> = { 1: 'Leve', 2: 'Moderada', 3: 'Intensa' };
+export const ZONE_RANGE: Record<Zone, string> = { 1: 'abaixo de VT1', 2: 'entre VT1 e VT2', 3: 'acima de VT2' };
+/** Rough equivalent on the 5-zone %HRmax scale. */
+export const ZONE_FIVE: Record<Zone, string> = { 1: 'Z1–Z2', 2: 'Z3–Z4', 3: 'Z5' };
 
 export type WorkoutKind = 'free' | 'endurance' | 'intervals' | 'threshold' | 'ramp' | 'recovery';
 
@@ -42,8 +53,9 @@ export interface WorkoutTemplate {
 
 export const NO_TARGET: Target = { kind: 'none' };
 
-export function phase(name: string, minutes: number, target: Target = NO_TARGET, cue = '', repeatCue: RepeatCue | null = null): Phase {
-  return { name, durationS: Math.round(minutes * 60), target, cue, repeatCue };
+export function phase(name: string, minutes: number, target: Target = NO_TARGET, cue = '', repeatCue: RepeatCue | null = null, cadenceRpm?: number): Phase {
+  const p: Phase = { name, durationS: Math.round(minutes * 60), target, cue, repeatCue };
+  return cadenceRpm === undefined ? p : { ...p, cadenceRpm };
 }
 
 export function repeat(times: number, block: readonly Phase[]): Phase[] {
@@ -110,7 +122,7 @@ export function describeTarget(t: Target): string {
     case 'none':
       return 'Livre';
     case 'zone':
-      return ['', 'Zona 1 · abaixo de VT1', 'Zona 2 · entre VT1 e VT2', 'Zona 3 · acima de VT2'][t.zone]!;
+      return `${ZONE_NAME[t.zone]} · ${ZONE_RANGE[t.zone]}`;
     case 'alpha1': {
       const f = (n: number) => n.toFixed(2).replace('.', ',');
       if (t.min !== null && t.max !== null) return `α1 entre ${f(t.min)} e ${f(t.max)}`;
@@ -165,6 +177,35 @@ export const BUILT_IN_WORKOUTS: readonly WorkoutTemplate[] = [
     builtIn: true,
   },
   {
+    id: 'long-120',
+    name: 'Longão · 2 h',
+    kind: 'endurance',
+    sport: 'bike-indoor',
+    description: 'O treino que constrói o motor do triathlon. Leve do começo ao fim; o drift de FC e o α1 no final mostram a durabilidade.',
+    phases: [
+      phase('Aquecimento', 10, Z1, 'Comece bem leve.'),
+      phase('Contínuo', 105, BELOW_VT1, 'Ritmo de conversa. α1 acima de 0,75. Beba água a cada 15 minutos.', null, 90),
+      phase('Desaquecimento', 5, Z1, 'Solte as pernas.'),
+    ],
+    builtIn: true,
+  },
+  {
+    id: 'quality-60',
+    name: 'Qualidade · 1 h',
+    kind: 'threshold',
+    sport: 'bike-indoor',
+    description: 'Introdução à intensidade moderada (Z3 na escala de 5 zonas): três blocos de 8 min entre VT1 e VT2.',
+    phases: [
+      phase('Aquecimento', 15, Z1, 'Aqueça progressivamente.'),
+      ...repeat(3, [
+        phase('Bloco', 8, Z2, 'Firme e controlado, entre VT1 e VT2. Ainda dá para falar frases curtas.', null, 90),
+        phase('Recuperação', 4, Z1, 'Alivie a carga.'),
+      ]),
+      phase('Desaquecimento', 9, Z1, 'Solte as pernas.'),
+    ],
+    builtIn: true,
+  },
+  {
     id: 'intervals-4x4',
     name: 'Intervalos 4×4',
     kind: 'intervals',
@@ -213,6 +254,27 @@ export const BUILT_IN_WORKOUTS: readonly WorkoutTemplate[] = [
     builtIn: true,
   },
   {
+    id: 'ramp-ergo',
+    name: 'Rampa DFA · ergométrica',
+    kind: 'ramp',
+    sport: 'bike-indoor',
+    description:
+      'Teste de limiares para bikes com botão de carga, sem watts. Cadência fixa em 90; a cada 2 min, o mesmo giro do botão para a direita. Cada degrau vira uma volta.',
+    phases: [
+      phase('Aquecimento', 10, Z1, 'Cadência 90. Ajuste o botão para uma carga leve e marque a posição.', null, 90),
+      phase(
+        'Rampa',
+        36,
+        NO_TARGET,
+        'A cada aviso, gire o botão o mesmo tanto para a direita. Cadência fixa em 90, sentado, sem falar. Vá até não sustentar.',
+        { everyS: 120, text: 'Gire um pouco para a direita.', lap: true },
+        90,
+      ),
+      phase('Desaquecimento', 5, Z1, 'Volte o botão para o início e solte as pernas.'),
+    ],
+    builtIn: true,
+  },
+  {
     id: 'recovery-30',
     name: 'Regenerativo · 30 min',
     kind: 'recovery',
@@ -235,6 +297,7 @@ export function validateTemplate(t: WorkoutTemplate): string[] {
   t.phases.forEach((p, i) => {
     if (!p.name.trim()) problems.push(`Fase ${i + 1} sem nome.`);
     if (!(p.durationS >= 10)) problems.push(`Fase ${i + 1} precisa de pelo menos 10 s.`);
+    if (p.cadenceRpm !== undefined && !(p.cadenceRpm >= 40 && p.cadenceRpm <= 140)) problems.push(`Fase ${i + 1}: cadência-alvo entre 40 e 140 rpm.`);
     if (p.target.kind === 'alpha1' && p.target.min !== null && p.target.max !== null && p.target.min >= p.target.max) {
       problems.push(`Fase ${i + 1}: o α1 mínimo deve ser menor que o máximo.`);
     }

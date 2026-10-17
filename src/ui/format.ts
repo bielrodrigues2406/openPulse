@@ -18,6 +18,7 @@ export function clock(totalS: number): string {
 /** "1 h 05" / "45 min" / "40 s" */
 export function duration(totalS: number): string {
   const t = Math.round(totalS);
+  if (t === 0) return '0 min';
   if (t < 60) return `${t} s`;
   const h = Math.floor(t / 3600);
   const m = Math.round((t % 3600) / 60);

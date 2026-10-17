@@ -127,9 +127,9 @@ function Editor(p: { initial: WorkoutTemplate | null; save: (t: WorkoutTemplate)
                 <span>Alvo</span>
                 <select className="select" value={targetKey(ph.target)} onChange={(e) => setPhase(i, { target: targetFrom(e.target.value as TargetKey, ph.target) })}>
                   <option value="none">Livre</option>
-                  <option value="z1">Zona 1 · abaixo de VT1</option>
-                  <option value="z2">Zona 2 · entre VT1 e VT2</option>
-                  <option value="z3">Zona 3 · acima de VT2</option>
+                  <option value="z1">Leve · abaixo de VT1 (Z1–Z2)</option>
+                  <option value="z2">Moderada · entre VT1 e VT2 (Z3–Z4)</option>
+                  <option value="z3">Intensa · acima de VT2 (Z5)</option>
                   <option value="a-min">α1 acima de…</option>
                   <option value="a-max">α1 abaixo de…</option>
                   <option value="a-range">α1 entre…</option>
@@ -148,11 +148,35 @@ function Editor(p: { initial: WorkoutTemplate | null; save: (t: WorkoutTemplate)
               <label className="field">
                 <span>Repetir aviso a cada</span>
                 <div className="input-unit">
-                  <input className="input num" type="number" min={0} value={ph.repeatCue?.everyS ?? ''} placeholder="—" onChange={(e) => { const v = Number(e.target.value); setPhase(i, { repeatCue: v > 0 ? { everyS: v, text: ph.repeatCue?.text ?? 'Suba um nível.' } : null }); }} />
+                  <input className="input num" type="number" min={0} value={ph.repeatCue?.everyS ?? ''} placeholder="—" onChange={(e) => { const v = Number(e.target.value); setPhase(i, { repeatCue: v > 0 ? { ...(ph.repeatCue ?? { text: 'Suba um nível.' }), everyS: v } : null }); }} />
                   <em>s</em>
                 </div>
               </label>
-              {ph.repeatCue && <label className="field"><span>Texto do aviso</span><input className="input" value={ph.repeatCue.text} onChange={(e) => setPhase(i, { repeatCue: { everyS: ph.repeatCue!.everyS, text: e.target.value } })} /></label>}
+              {ph.repeatCue && <label className="field"><span>Texto do aviso</span><input className="input" value={ph.repeatCue.text} onChange={(e) => setPhase(i, { repeatCue: { ...ph.repeatCue!, text: e.target.value } })} /></label>}
+              {ph.repeatCue && (
+                <label className="toggle" style={{ borderBottom: 0 }}>
+                  <span>Marcar volta a cada aviso</span>
+                  <input type="checkbox" checked={ph.repeatCue.lap ?? false} onChange={(e) => setPhase(i, { repeatCue: { ...ph.repeatCue!, lap: e.target.checked } })} />
+                </label>
+              )}
+              <label className="field">
+                <span>Cadência-alvo</span>
+                <div className="input-unit">
+                  <input
+                    className="input num"
+                    type="number"
+                    min={0}
+                    value={ph.cadenceRpm ?? ''}
+                    placeholder="livre"
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      const { cadenceRpm: _drop, ...rest } = ph;
+                      setT({ ...t, phases: t.phases.map((x, k) => (k === i ? (v > 0 ? { ...rest, cadenceRpm: v } : rest) : x)) });
+                    }}
+                  />
+                  <em>rpm</em>
+                </div>
+              </label>
             </div>
             <div className="phase-actions">
               <button className="btn sm quiet" aria-label="Mover para cima" onClick={() => move(i, -1)} disabled={i === 0}>↑</button>

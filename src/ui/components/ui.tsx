@@ -1,10 +1,11 @@
 import { useEffect, type ReactNode } from 'react';
 import type { ZoneBounds } from '../../domain/athlete/profile';
-import type { Zone } from '../../domain/workouts/workout';
+import { ZONE_FIVE, ZONE_NAME, ZONE_RANGE, type Zone } from '../../domain/workouts/workout';
 import { fmt } from '../format';
 
-export const ZONE_LABEL: Record<Zone, string> = { 1: 'Zona 1', 2: 'Zona 2', 3: 'Zona 3' };
-export const ZONE_HINT: Record<Zone, string> = { 1: 'abaixo de VT1', 2: 'entre VT1 e VT2', 3: 'acima de VT2' };
+export const ZONE_LABEL = ZONE_NAME;
+export const ZONE_HINT = ZONE_RANGE;
+export { ZONE_FIVE };
 export const ZONE_COLOR: Record<Zone, string> = { 1: 'var(--z1)', 2: 'var(--z2)', 3: 'var(--z3)' };
 
 export function ZoneChip({ zone, hint = false }: { zone: Zone | null; hint?: boolean }) {
@@ -49,7 +50,7 @@ export function ZoneDistribution({ seconds, showLegend = true }: { seconds: read
   const pct = seconds.map((s) => (s / total) * 100);
   return (
     <div>
-      <div className="zone-dist" role="img" aria-label={`Zona 1 ${fmt(pct[0])}%, zona 2 ${fmt(pct[1])}%, zona 3 ${fmt(pct[2])}%`}>
+      <div className="zone-dist" role="img" aria-label={`Leve ${fmt(pct[0])}%, moderada ${fmt(pct[1])}%, intensa ${fmt(pct[2])}%`}>
         {([1, 2, 3] as const).map((z) => pct[z - 1]! > 0 && <span key={z} className={`z${z}`} style={{ width: `${pct[z - 1]}%` }} />)}
       </div>
       {showLegend && (

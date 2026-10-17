@@ -7,7 +7,7 @@ import { describeTarget, totalDurationS, type Sport, type TargetState, type Work
 import type { LiveSnapshot } from '../../app/live-session';
 import { LiveEcgStrip } from '../components/LiveEcgStrip';
 import { Timeline } from '../components/Timeline';
-import { Section, Segmented, Stat, ZONE_COLOR, ZONE_HINT, ZONE_LABEL, ZoneBar, ZoneChip } from '../components/ui';
+import { Section, Segmented, Stat, ZONE_COLOR, ZONE_FIVE, ZONE_HINT, ZONE_LABEL, ZoneBar, ZoneChip } from '../components/ui';
 import { KIND_LABEL, SPORT_LABEL, clock, dateTime, duration, fmt } from '../format';
 import { IconExpand, IconFlag } from '../icons';
 import { useData, useHub, useLive, useServices } from '../services';
@@ -225,6 +225,15 @@ function WorkoutHeader({ s, onFocus }: { s: LiveSnapshot; onFocus: () => void })
             {describeTarget(pos.phase.target)} <TargetBadge state={w.target} />
           </div>
           {pos.phase.cue && <p className="wh-cue">{pos.phase.cue}</p>}
+          {w.cadenceTarget !== null && (
+            <div className="wh-cadence">
+              Cadência <b className="num">{w.cadenceTarget}</b> rpm
+              <span className={w.cadenceNow !== null && Math.abs(w.cadenceNow - w.cadenceTarget) > 5 ? 'off' : ''}>
+                agora {w.cadenceNow === null ? '—' : <b className="num">{Math.round(w.cadenceNow)}</b>}
+              </span>
+              <span className="est">EST</span>
+            </div>
+          )}
           <div className="wh-phase-clock num">{clock(pos.phaseRemainingS)}</div>
           {pos.next && <div className="faint" style={{ fontSize: 12 }}>A seguir: {pos.next.name} · {duration(pos.next.durationS)}</div>}
         </div>
@@ -255,6 +264,11 @@ function WorkoutHeader({ s, onFocus }: { s: LiveSnapshot; onFocus: () => void })
           <button className="btn primary" onClick={() => setConfirming(true)}>Encerrar</button>
         )}
       </div>
+      {w.rampDone && (
+        <div className="wh-done">
+          <strong>α1 abaixo de 0,50 há 2 min.</strong> O teste já tem dados para os dois limiares; pode encerrar quando quiser.
+        </div>
+      )}
       {w.totalPlanS > 0 && (
         <div className="wh-progress">
           <PhaseStrip phases={live.plannedPhases()} progressS={w.activeS} />
@@ -314,7 +328,7 @@ function LivePanels({ s }: { s: LiveSnapshot }) {
           </div>
           <div className="hero-zone">
             <ZoneChip zone={s.zone} />
-            {s.zone && <span className="dim" style={{ fontSize: 13 }}>{ZONE_HINT[s.zone]}</span>}
+            {s.zone && <span className="dim" style={{ fontSize: 13 }}>{ZONE_HINT[s.zone]} · {ZONE_FIVE[s.zone]}</span>}
             {b?.estimated && <span className="est" title="Zonas estimadas pela FC máxima; faça a rampa DFA para medir.">EST</span>}
           </div>
           {b ? <ZoneBar bpm={s.bpm} bounds={b} zone={s.zone} /> : (

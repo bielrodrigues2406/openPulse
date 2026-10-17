@@ -10,6 +10,32 @@ export const WEEKDAYS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sáb
 
 export const EMPTY_WEEK: WeekPlan = { days: [[], [], [], [], [], [], []] };
 
+export interface WeekPreset {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string;
+  readonly plan: WeekPlan;
+}
+
+/**
+ * Starting points, meant to be edited (days are suggestions). Two and three bike sessions
+ * cover a triathlete building toward an endurance season; the 5-day one is classic 80/20.
+ */
+export const WEEK_PRESETS: readonly WeekPreset[] = [
+  {
+    id: 'two',
+    name: '2 treinos · longão + qualidade',
+    description: 'Qualidade de 1 h no meio da semana, longão de 2 h no fim de semana.',
+    plan: { days: [[], [], ['quality-60'], [], [], ['long-120'], []] },
+  },
+  {
+    id: 'three',
+    name: '3 treinos · longão + qualidade + base',
+    description: 'Acrescenta uma base de 60 min. Rampa a cada 4–6 semanas no lugar da qualidade.',
+    plan: { days: [[], ['quality-60'], [], ['base-60'], [], ['long-120'], []] },
+  },
+];
+
 /**
  * ~80/20 polarized week: one high-intensity day, volume below VT1 on the rest,
  * recovery after the hard day, two full rest days. A starting point, meant to be edited.
@@ -17,6 +43,11 @@ export const EMPTY_WEEK: WeekPlan = { days: [[], [], [], [], [], [], []] };
 export const POLARIZED_WEEK: WeekPlan = {
   days: [[], ['intervals-4x4'], ['recovery-30'], ['base-60'], [], ['long-90'], ['base-60']],
 };
+
+export const ALL_PRESETS: readonly WeekPreset[] = [
+  ...WEEK_PRESETS,
+  { id: 'polarized', name: '5 treinos · polarizada 80/20', description: 'Um dia intenso, volume leve no resto, dois dias de descanso.', plan: POLARIZED_WEEK },
+];
 
 export function mondayOf(d: Date): Date {
   const m = new Date(d.getFullYear(), d.getMonth(), d.getDate());

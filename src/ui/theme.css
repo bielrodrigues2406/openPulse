@@ -296,6 +296,11 @@ a { color: inherit; }
 .wh-phase-name { font-size: 20px; font-weight: 600; margin-top: 4px; letter-spacing: -0.01em; }
 .wh-phase-target { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; color: var(--text-dim); margin-top: 4px; font-size: 13px; }
 .wh-cue { color: var(--text-dim); font-size: 13px; margin-top: 8px; max-width: 46ch; }
+.wh-cadence { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; font-size: 13px; color: var(--text-dim); }
+.wh-cadence b { color: var(--sig-cadence); font-weight: 500; font-size: 15px; }
+.wh-cadence span.off b { color: var(--warn); }
+.wh-done { grid-column: 1 / -1; padding: 10px 14px; border-radius: var(--r-md); border: 1px solid rgba(199, 165, 228, 0.4); background: rgba(199, 165, 228, 0.07); font-size: 13px; color: var(--text-dim); }
+.wh-done strong { color: var(--sig-dfa); font-weight: 600; }
 .wh-phase-clock { font-size: 34px; margin-top: 8px; letter-spacing: -0.02em; }
 .wh-actions { display: flex; flex-direction: column; gap: 8px; align-items: stretch; min-width: 170px; }
 .wh-progress { grid-column: 1 / -1; }

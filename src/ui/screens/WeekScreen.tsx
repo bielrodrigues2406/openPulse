@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { weeklyLoads } from '../../domain/analysis/trends';
 import { zoneBounds } from '../../domain/athlete/profile';
-import { EMPTY_WEEK, POLARIZED_WEEK, WEEKDAYS, addDays, mondayOf, resolveWeek, type WeekPlan } from '../../domain/workouts/week-plan';
+import { ALL_PRESETS, EMPTY_WEEK, WEEKDAYS, addDays, mondayOf, resolveWeek, type WeekPlan } from '../../domain/workouts/week-plan';
 import { ZoneDistribution } from '../components/ui';
 import { KIND_LABEL, duration, fmt, plural, shortDay } from '../format';
 import { href } from '../router';
@@ -64,7 +64,7 @@ export function WeekScreen() {
           <div style={{ marginTop: 12 }}>
             {load.zonesS && load.zonesS.some((x) => x > 0) ? <ZoneDistribution seconds={load.zonesS} /> : <span className="faint">{bounds ? 'Nenhum treino nesta semana.' : 'Configure o perfil para ver zonas.'}</span>}
           </div>
-          <div className="stat-note">Referência polarizada: ~80% na zona 1</div>
+          <div className="stat-note">Referência polarizada: ~80% do tempo em Leve</div>
         </div>
       </div>
 
@@ -72,7 +72,19 @@ export function WeekScreen() {
         <div className="notice" style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
           <span>A estrutura se repete toda semana. Treinos feitos com o mesmo modelo marcam o planejado como concluído.</span>
           <span style={{ display: 'flex', gap: 8 }}>
-            <button className="btn sm" onClick={() => void savePlan(POLARIZED_WEEK).then(() => toast('Semana polarizada aplicada'))}>Usar semana polarizada 80/20</button>
+            <select
+              className="select"
+              style={{ height: 32, width: 'auto', fontSize: 13 }}
+              value=""
+              aria-label="Aplicar um modelo de semana"
+              onChange={(e) => {
+                const preset = ALL_PRESETS.find((x) => x.id === e.target.value);
+                if (preset) void savePlan(preset.plan).then(() => toast(`Aplicado: ${preset.name}`));
+              }}
+            >
+              <option value="">Aplicar modelo…</option>
+              {ALL_PRESETS.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+            </select>
             <button className="btn sm quiet" onClick={() => void savePlan(EMPTY_WEEK)}>Limpar</button>
           </span>
         </div>

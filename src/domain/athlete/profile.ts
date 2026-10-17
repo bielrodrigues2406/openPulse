@@ -70,12 +70,6 @@ export function zoneOf(hr: number, b: ZoneBounds): Zone {
   return hr < b.vt1 ? 1 : hr < b.vt2 ? 2 : 3;
 }
 
-export const ZONE_NAMES: Record<Zone, string> = {
-  1: 'Zona 1 · leve',
-  2: 'Zona 2 · moderada',
-  3: 'Zona 3 · intensa',
-};
-
 export interface TimedHr {
   readonly tS: number;
   readonly bpm: number;

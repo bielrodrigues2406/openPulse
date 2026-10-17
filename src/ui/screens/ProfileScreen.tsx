@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ageOf, effectiveMaxHr, sanitizeProfile, zoneBounds, type AthleteProfile, type Sex } from '../../domain/athlete/profile';
-import { NumberField, Section, Segmented, ZONE_COLOR, ZONE_HINT, ZONE_LABEL } from '../components/ui';
+import { NumberField, Section, Segmented, ZONE_COLOR, ZONE_FIVE, ZONE_HINT, ZONE_LABEL } from '../components/ui';
 import { desktopBridge } from '../desktop';
 import { download } from '../download';
 import { fmt, shortDay } from '../format';
@@ -78,9 +78,9 @@ export function ProfileScreen() {
                 const range = z === 1 ? `< ${bounds.vt1}` : z === 2 ? `${bounds.vt1} – ${bounds.vt2 - 1}` : `≥ ${bounds.vt2}`;
                 return (
                   <div key={z} className="zone-row" style={{ borderLeftColor: ZONE_COLOR[z] }}>
-                    <div><b>{ZONE_LABEL[z]}</b> <span className="dim">· {ZONE_HINT[z]}</span></div>
+                    <div><b>{ZONE_LABEL[z]}</b> <span className="dim">· {ZONE_HINT[z]}</span> <span className="tag">{ZONE_FIVE[z]}</span></div>
                     <div className="num" style={{ fontSize: 20 }}>{range} <small className="faint">bpm</small></div>
-                    <div className="faint" style={{ fontSize: 12 }}>{z === 1 ? 'Base aeróbica, conversa fácil. ~80% do volume.' : z === 2 ? 'Moderado. Use com parcimônia.' : 'Intensidade alta. Tiros e intervalos.'}</div>
+                    <div className="faint" style={{ fontSize: 12 }}>{z === 1 ? 'Base aeróbica, conversa fácil. O seu “Z2”. ~80% do volume.' : z === 2 ? 'Tempo e limiar (Z3–Z4). Use com parcimônia.' : 'Intensidade alta. Tiros e intervalos.'}</div>
                   </div>
                 );
               })}

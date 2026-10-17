@@ -260,3 +260,32 @@ describe('laps', () => {
     expect(l[2]!.maxBpm).toBe(150);
   });
 });
+
+import { ALL_PRESETS } from '../src/domain/workouts/week-plan';
+
+describe('presets and templates for a triathlete without a power meter', () => {
+  it('every week preset only references templates that exist', () => {
+    const ids = new Set(BUILT_IN_WORKOUTS.map((t) => t.id));
+    for (const p of ALL_PRESETS) {
+      expect(p.plan.days).toHaveLength(7);
+      for (const id of p.plan.days.flat()) expect(ids.has(id)).toBe(true);
+    }
+  });
+
+  it('the ergometer ramp steps every 2 min with a lap per step and a 90 rpm cadence target', () => {
+    const ramp = BUILT_IN_WORKOUTS.find((t) => t.id === 'ramp-ergo')!;
+    const main = ramp.phases.find((p) => p.name === 'Rampa')!;
+    expect(ramp.kind).toBe('ramp');
+    expect(main.repeatCue).toMatchObject({ everyS: 120, lap: true });
+    expect(main.cadenceRpm).toBe(90);
+  });
+
+  it('zone targets are named, with the 5-zone equivalent kept apart', () => {
+    expect(describeTarget({ kind: 'zone', zone: 1 })).toBe('Leve · abaixo de VT1');
+    expect(describeTarget({ kind: 'zone', zone: 2 })).toBe('Moderada · entre VT1 e VT2');
+  });
+
+  it('validation rejects an impossible cadence target', () => {
+    expect(validateTemplate({ ...BUILT_IN_WORKOUTS[1]!, phases: [phase('A', 5, undefined, '', null, 300)] }).join(' ')).toMatch(/cadência/);
+  });
+});
