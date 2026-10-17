@@ -77,7 +77,9 @@ function paint({ ctx, width, height, color }: Frame, p: TimelineProps): void {
     }
     const span = hi - lo;
     const step = niceStep(span / 4);
-    y = { min: Math.floor((lo - span * 0.1) / step) * step, max: Math.ceil((hi + span * 0.1) / step) * step, step };
+    const nonNegative = vals.length > 0 && vals[0]! >= 0;
+    const yMin = Math.floor((lo - span * 0.1) / step) * step;
+    y = { min: nonNegative ? Math.max(0, yMin) : yMin, max: Math.ceil((hi + span * 0.1) / step) * step, step };
   }
   const { min, max, step } = y;
   const fy = y.fmt ?? ((v: number) => String(Math.round(v * 100) / 100).replace('.', ','));

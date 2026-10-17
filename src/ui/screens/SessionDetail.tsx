@@ -102,8 +102,8 @@ function Detail({ rec }: { rec: SessionRecord }) {
         <Stat label="Energia" value={fmt(n.kcal)} unit="kcal" estimate />
         <Stat label="RMSSD" value={fmt(n.rmssdMs, 1)} unit="ms" />
         <Stat label="α1 mínimo" value={fmt(n.minAlpha1, 2)} color="var(--sig-dfa)" />
-        <Stat label="Respiração média" value={fmt(n.meanBreaths)} unit="irpm" estimate />
-        <Stat label="Cadência média" value={fmt(n.meanRpm)} unit="rpm" estimate />
+        <Stat label="Respiração" value={fmt(n.meanBreaths)} unit="irpm" estimate note="média" />
+        <Stat label="Cadência" value={fmt(n.meanRpm)} unit="rpm" estimate note="média" />
         <Stat label="Drift de FC" value={signed(n.driftPct, 1)} unit="%" title="FC da 2ª metade vs 1ª metade do bloco principal" />
         <Stat label="Artefatos" value={fmt(n.artifactPct, 1)} unit="%" color={n.artifactPct !== null && n.artifactPct > 5 ? 'var(--danger)' : undefined} />
         <Stat label="Esforço" value={rec.rpe ?? '—'} unit={rec.rpe ? '/10' : undefined} />

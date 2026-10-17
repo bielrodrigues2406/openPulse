@@ -98,7 +98,13 @@ export function laps(s: Pick<SessionRecord, 'workout' | 'segments' | 'markers' |
     acc += p.durationS;
   }
   if (!cuts.length || cuts[0]!.t > 0) cuts.unshift({ t: 0, name: phases.length ? 'Antes do plano' : 'Início' });
-  for (const m of s.markers) cuts.push({ t: m.tMs / 1000, name: m.label });
+  // A lap marked inside a phase keeps the phase in its name: "Rampa · Volta 1".
+  const phaseCuts = [...cuts];
+  for (const m of s.markers) {
+    const t = m.tMs / 1000;
+    const inPhase = phaseCuts.filter((c) => c.t <= t).at(-1);
+    cuts.push({ t, name: phases.length && inPhase ? `${inPhase.name} · ${m.label}` : m.label });
+  }
   cuts.sort((a, b) => a.t - b.t);
   const out: Lap[] = [];
   for (let i = 0; i < cuts.length; i++) {

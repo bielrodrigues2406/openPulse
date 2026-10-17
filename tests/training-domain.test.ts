@@ -255,7 +255,7 @@ describe('laps', () => {
       workout: { templateId: null, name: 'x', kind: 'endurance', phases: [phase('Aq', 2), phase('Base', 8)] },
     });
     const l = laps(s);
-    expect(l.map((x) => [x.name, x.activeS])).toEqual([['Aq', 120], ['Base', 180], ['Volta 1', 300]]);
+    expect(l.map((x) => [x.name, x.activeS])).toEqual([['Aq', 120], ['Base', 180], ['Base · Volta 1', 300]]);
     expect(l[0]!.meanBpm).toBe(100);
     expect(l[2]!.maxBpm).toBe(150);
   });
