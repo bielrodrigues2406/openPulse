@@ -46,6 +46,7 @@ export class NativeH10Adapter extends SensorBase implements DiagnosticsSource, R
   private gotHr = false;
   private dropsWithoutData = 0;
   private repaired = false;
+  private repairing = false;
 
   private pmd: 'off' | 'starting' | 'on' = 'off';
   private pmdDisabled: string | null = null;
@@ -63,7 +64,13 @@ export class NativeH10Adapter extends SensorBase implements DiagnosticsSource, R
     super();
     t.onData(this.handleData);
     t.onDisconnected(this.handleDisconnect);
-    t.onLog((line) => this.step(line));
+    t.onLog((line) => {
+      this.step(line);
+      // "[etapa] …" lines are progress worth showing while the first connection is being made.
+      if (line.startsWith('[etapa] ') && this.connecting && !this.linked && !this.repairing) {
+        this.setStatus({ state: 'connecting', detail: capitalize(line.slice(8)) });
+      }
+    });
   }
 
   diagnostics(): readonly string[] {
@@ -96,7 +103,8 @@ export class NativeH10Adapter extends SensorBase implements DiagnosticsSource, R
       void this.readBattery();
     } catch (err) {
       this.step(`falhou: ${errText(err)}`);
-      this.setStatus({ state: 'error', message: describeNativeError(err) });
+      if (this.userDisconnect) this.setStatus({ state: 'idle' }); // cancelled
+      else this.setStatus({ state: 'error', message: describeNativeError(err) });
     } finally {
       this.connecting = false;
     }
@@ -155,6 +163,7 @@ export class NativeH10Adapter extends SensorBase implements DiagnosticsSource, R
 
   private async repair(reason: string): Promise<boolean> {
     this.repaired = true;
+    this.repairing = true;
     this.connecting = true;
     this.pmdDisabled = null;
     this.pmdRetries = 0;
@@ -168,10 +177,12 @@ export class NativeH10Adapter extends SensorBase implements DiagnosticsSource, R
       return true;
     } catch (err) {
       this.step(`pareamento não refeito: ${errText(err)}`);
-      this.setStatus({ state: 'error', message: `Não deu para refazer o pareamento: ${describeNativeError(err)}` });
+      if (this.userDisconnect) this.setStatus({ state: 'idle' });
+      else this.setStatus({ state: 'error', message: `Não deu para refazer o pareamento: ${describeNativeError(err)}` });
       return false;
     } finally {
       this.connecting = false;
+      this.repairing = false;
     }
   }
 
@@ -325,5 +336,13 @@ function cleanMessage(err: unknown): string {
 export function describeNativeError(err: unknown): string {
   const msg = cleanMessage(err);
   if (/desligado|indisponível/i.test(msg)) return 'O Bluetooth do Windows está desligado. Ligue-o e tente de novo.';
+  // Raw WinRT/noble text ("Disconnected unknown", "could not connect to device") is English and
+  // says little; the diagnostics keep it verbatim.
+  if (/disconnect/i.test(msg)) return 'A cinta desconectou durante a conexão. Confira se ela está no peito, com os eletrodos úmidos, e tente de novo.';
+  if (/could not connect|unreachable/i.test(msg)) return 'A cinta não está ao alcance. Vista a cinta e tente de novo.';
   return msg || 'Falha desconhecida no Bluetooth';
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1) + '…';
 }

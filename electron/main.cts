@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { NativeBle, type CharKey, type NativeBleHost, type StrapInfo } from './native-ble.cjs';
-import { unpairH10 } from './windows-bt.cjs';
+import { bluetoothReport, unpairH10 } from './windows-bt.cjs';
 
 /**
  * openPulse desktop shell. Same web app, plus what a browser tab cannot do:
@@ -174,6 +174,7 @@ app.whenReady().then(() => {
     void win?.webContents.executeJavaScript('window.__openPulseAutoConnect && window.__openPulseAutoConnect()', true);
     return result;
   });
+  ipcMain.handle('bt:report', () => bluetoothReport());
   ipcMain.on('show-file', (_e, file: string) => shell.showItemInFolder(file));
 
   startNativeBle();

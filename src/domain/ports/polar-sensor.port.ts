@@ -8,7 +8,7 @@ export type SensorEvent =
 
 export type SensorStatus =
   | { readonly state: 'idle' }
-  | { readonly state: 'connecting' }
+  | { readonly state: 'connecting'; readonly detail?: string }
   | { readonly state: 'streaming'; readonly deviceName: string }
   | { readonly state: 'error'; readonly message: string };
 

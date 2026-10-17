@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ageOf, effectiveMaxHr, sanitizeProfile, zoneBounds, type AthleteProfile, type Sex } from '../../domain/athlete/profile';
+import { PcBluetoothSection } from '../components/PcBluetooth';
 import { NumberField, Section, Segmented, ZONE_COLOR, ZONE_FIVE, ZONE_HINT, ZONE_LABEL } from '../components/ui';
 import { desktopBridge } from '../desktop';
 import { download } from '../download';
@@ -135,6 +136,8 @@ export function ProfileScreen() {
             <button className="btn sm" onClick={() => { cues.unlock(); cues.beep('go'); cues.say('Teste de voz. Zona um.'); }}>Testar som e voz</button>
           </div>
         </Section>
+
+        <PcBluetoothSection />
 
         <Section title="Dados">
           <p className="dim" style={{ fontSize: 13, marginBottom: 12 }}>

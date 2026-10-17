@@ -13,6 +13,8 @@ export interface DesktopBridge {
   forgetDevice(): void;
   /** Web Bluetooth path, Windows only: removes the strap's pairing, then reconnects (which pairs again). */
   repairPairing(): Promise<{ ok: boolean; lines: string[] }>;
+  /** Windows only: raw JSON describing this PC's Bluetooth (see src/app/pc-bluetooth.ts). */
+  bluetoothReport(): Promise<string>;
   /** Windows' own Bluetooth stack; absent elsewhere (the app then uses Web Bluetooth). */
   ble?: NativeBleTransport;
 }

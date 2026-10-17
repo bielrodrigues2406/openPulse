@@ -23,7 +23,14 @@ instead of Chromium's Web Bluetooth:
   dies right after connecting) it removes the pairing and pairs again, once per connection.
   **Refazer pareamento** (sensor card / Perfil) does the same on demand.
 
-It remembers your strap and can connect on launch. Exports go straight to `Documents\openPulse`.
+It remembers your strap and can connect on launch. While connecting, the sensor card shows each
+step and can be cancelled.
+
+**Perfil → Bluetooth do PC** checks this computer's Bluetooth and says what to fix: adapter
+state and problem codes, driver version/date/provider, whether Windows may power the adapter
+down, Bluetooth errors Windows logged in the last 14 days, the support service, radio generation,
+USB selective suspend and whether Wi-Fi sits on 2.4 GHz next to it. Read-only; the full report
+can be copied. Exports go straight to `Documents\openPulse`.
 
 ```sh
 npm install

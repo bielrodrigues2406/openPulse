@@ -7,15 +7,24 @@ import type { SensorEvent, SensorStatus } from '../src/domain/ports/polar-sensor
  * 'ok' works, 'stale' means Windows kept keys the strap dropped (pairing fails, or the link dies
  * when ECG asks for encryption), 'none' pairs on request.
  */
-function fakeShell(opts: { bond?: 'ok' | 'stale' | 'none'; staleDropsLink?: boolean; pmdError?: number } = {}) {
+function fakeShell(opts: { bond?: 'ok' | 'stale' | 'none'; staleDropsLink?: boolean; pmdError?: number; slowOpen?: boolean } = {}) {
   let bond = opts.bond ?? 'ok';
   const data = new Set<(k: NativeCharKey, b: Uint8Array) => void>();
   const drops = new Set<(r: string) => void>();
   const calls: string[] = [];
+  const logs = new Set<(line: string) => void>();
+  let cancelOpen: (() => void) | null = null;
   const send = (k: NativeCharKey, bytes: number[]) => { for (const l of data) l(k, Uint8Array.from(bytes)); };
   const drop = () => { for (const l of drops) l('link caiu'); };
   const t: NativeBleTransport = {
-    async open() { calls.push('open'); return { name: 'Polar H10 EBEC782E', address: 'a0b1c2d3e4f5' }; },
+    async open() {
+      calls.push('open');
+      for (const l of logs) l('[etapa] conectando a Polar H10 EBEC782E');
+      if (opts.slowOpen) {
+        await new Promise<void>((resolve, reject) => { cancelOpen = () => reject(new Error('Conexão cancelada')); void resolve; });
+      }
+      return { name: 'Polar H10 EBEC782E', address: 'a0b1c2d3e4f5' };
+    },
     async subscribe(key) {
       calls.push(`sub:${key}`);
       if (key.startsWith('pmd') && bond === 'stale') {
@@ -36,10 +45,10 @@ function fakeShell(opts: { bond?: 'ok' | 'stale' | 'none'; staleDropsLink?: bool
       bond = 'ok';
     },
     async repair() { calls.push('repair'); bond = 'ok'; return { name: 'Polar H10 EBEC782E', address: 'a0b1c2d3e4f5' }; },
-    async close() { calls.push('close'); },
+    async close() { calls.push('close'); cancelOpen?.(); },
     onData(cb) { data.add(cb); return () => data.delete(cb); },
     onDisconnected(cb) { drops.add(cb); return () => drops.delete(cb); },
-    onLog() { return () => undefined; },
+    onLog(cb) { logs.add(cb); return () => logs.delete(cb); },
   };
   return { t, calls, send, drop };
 }
@@ -148,5 +157,16 @@ describe('NativeH10Adapter', () => {
     expect(statuses.at(-1)).toEqual({ state: 'idle' });
     expect(calls).toContain('close');
     expect(calls.filter((c) => c === 'open')).toHaveLength(1);
+  });
+
+  it('shows connection progress and can be cancelled while connecting', async () => {
+    const { a, calls, statuses } = setup({ slowOpen: true });
+    const pending = a.connect();
+    await flush();
+    expect(statuses.at(-1)).toEqual({ state: 'connecting', detail: 'Conectando a Polar H10 EBEC782E…' });
+    a.disconnect();
+    await pending;
+    expect(calls).toContain('close');
+    expect(statuses.at(-1)).toEqual({ state: 'idle' });
   });
 });

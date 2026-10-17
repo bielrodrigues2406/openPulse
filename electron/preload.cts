@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld('openPulseDesktop', {
   },
   showFile: (p: string) => ipcRenderer.send('show-file', p),
   forgetDevice: () => ipcRenderer.send('forget-device'),
+  bluetoothReport: () => ipcRenderer.invoke('bt:report') as Promise<string>,
   repairPairing: () => ipcRenderer.invoke('repair-pairing') as Promise<{ ok: boolean; lines: string[] }>,
   ...(ble ? { ble } : {}),
 });

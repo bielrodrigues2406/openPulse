@@ -15,7 +15,7 @@ export function SensorCard({ compact = false }: { compact?: boolean }) {
   const reconnecting = live && s.deviceName.includes('reconectando');
   const tone = s.state === 'error' ? 'error' : busy || reconnecting ? 'busy' : live ? 'live' : '';
   const name = live ? s.deviceName : h.source === 'sim' ? 'Simulador' : 'Polar H10';
-  const line = s.state === 'error' ? s.message : busy ? 'Procurando a cinta…' : live ? 'Conectada' : 'Desconectada';
+  const line = s.state === 'error' ? s.message : s.state === 'connecting' ? s.detail ?? 'Procurando a cinta…' : live ? 'Conectada' : 'Desconectada';
 
   const toggle = () => {
     cues.unlock();
@@ -63,9 +63,13 @@ export function SensorCard({ compact = false }: { compact?: boolean }) {
           </span>
         )}
       </div>
-      <button className={live ? 'btn' : 'btn primary'} onClick={toggle} disabled={busy}>
-        {live ? 'Desconectar' : busy ? 'Conectando…' : 'Conectar cinta'}
-      </button>
+      {busy && native ? (
+        <button className="btn" onClick={() => hub.disconnect()}>Cancelar</button>
+      ) : (
+        <button className={live ? 'btn' : 'btn primary'} onClick={toggle} disabled={busy}>
+          {live ? 'Desconectar' : busy ? 'Conectando…' : 'Conectar cinta'}
+        </button>
+      )}
       {canRepair && (
         <button className="btn" style={{ marginTop: 8 }} onClick={() => void repair()} disabled={repairing}>
           {repairing ? 'Refazendo pareamento…' : 'Refazer pareamento'}

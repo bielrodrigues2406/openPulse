@@ -450,3 +450,14 @@ a { color: inherit; }
 @media (max-width: 760px) { .zones-table, .form-grid { grid-template-columns: 1fr; } }
 .grid-2 > .section, .grid-3 > .section { margin-top: 0; }
 a.btn { text-decoration: none; }
+
+/* PC Bluetooth report */
+.findings { list-style: none; margin: 0; padding: 0; }
+.findings li { display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.findings li:first-child { padding-top: 2px; }
+.findings .dot { margin-top: 6px; }
+.finding-title { font-weight: 500; font-size: 14px; }
+.finding-detail { color: var(--text-dim); font-size: 13px; margin-top: 3px; line-height: 1.5; overflow-wrap: anywhere; }
+.facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px 24px; margin: 16px 0 0; }
+.facts dt { color: var(--text-faint); font-size: 12px; }
+.facts dd { margin: 2px 0 0; font-size: 13px; overflow-wrap: anywhere; }
