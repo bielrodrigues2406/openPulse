@@ -1,63 +1,88 @@
 # openPulse
 
-Real-time Web Bluetooth cockpit for the Polar H10 on a stationary bike. Local-first: nothing leaves the browser.
+Training cockpit for the Polar H10 chest strap. Live ECG, beat-by-beat R-R, DFA α1 with automatic
+HRVT1/HRVT2 from a ramp, polarized zones, respiration and cadence from the chest accelerometer,
+structured workouts with voice cues, a weekly plan, history, trends and a morning readiness test.
+Everything stays on your device.
 
-**Status:** stage 3. Live HR, beat-by-beat R-R with artifact gating, RMSSD, a 130 Hz ECG strip,
-DFA α1 in a Web Worker, and local session history with open export.
-The 200 Hz accelerometer stream is decoded; respiration and cadence are not built yet.
+> Interface in Brazilian Portuguese. Physiological estimates (thresholds, zones from max HR,
+> respiration, cadence, calories) are labelled as estimates in the app; they are not medical advice.
 
-## Run
+## Install
+
+### Desktop app (Windows) — recommended
+
+No browser, no device chooser: the app remembers your strap, answers the Bluetooth pairing prompt
+itself and can connect on launch. Exports go straight to `Documents\openPulse`.
 
 ```sh
 npm install
-npm run dev      # open in Chrome or Edge (desktop or Android)
-npm test
+npm run desktop:dist      # → release/openPulse Setup x.y.z.exe and a portable .exe
 ```
 
-Web Bluetooth only exists in Chromium browsers. Safari, Firefox and iOS cannot connect to the strap;
-use **Simulador** there. The simulator is deterministic (same seed, same signal) and injects ~1% ectopic beats.
+Run without packaging: `npm run desktop`.
 
-## What the numbers mean
+### Web app
 
-- **R-R** comes from the standard Heart Rate characteristic (0x2A37) at 1/1024 s resolution.
-- A beat is **rejected** if outside 250–2000 ms or more than 20% away from the median of the last 5 accepted beats.
-  Rejected beats are shown as red circles on the tachogram, never silently hidden.
-- **RMSSD** uses only pairs where both beats were accepted, over the last 60 s.
-- **Artifacts** above 5% turn red: that's roughly where DFA α1 stops being trustworthy.
+```sh
+npm install
+npm run dev               # open in Chrome or Edge
+```
 
-## DFA α1
+Built (`npm run build`) and served over HTTPS or localhost, it is installable (PWA) and works
+offline. Web Bluetooth exists only in Chromium browsers; Safari/iOS cannot connect to the strap.
+Data is stored per origin: moving from the browser to the desktop app goes through
+**Perfil → Exportar backup / Importar backup**.
 
-Short-term DFA (Peng 1995), scales 4–16 beats, 120 s window recomputed every 5 s of beat time, in
-`src/workers/dsp.worker.ts`. Rejected beats are replaced by linear interpolation; a window with more than
-5% rejected beats or fewer than 64 beats is withheld (red tick on the chart), not shown with a biased value.
+### First connection on Windows
 
-The 0.75 and 0.50 lines are population estimates of VT1/VT2 (Rogers et al. 2021). Individual thresholds
-vary; validate against a lab test before training by them.
+If the strap connects but drops right away, Windows wants to pair it. The desktop app confirms the
+pairing on its own; in a browser, accept the "Adicionar um dispositivo" notification once.
+The strap allows two connections at a time; close Polar Flow (or turn off the phone's Bluetooth)
+if it is connected elsewhere.
 
-The simulator runs a 15 min ramp (70 → 165 bpm) in which α1 falls from ~1.2 through 0.75 around minute 12.
+## What it does
 
-## Sessions and export
-
-Sessions are written to IndexedDB every 30 s while streaming and again on disconnect, so closing the tab
-loses at most 30 s. Data never leaves this browser; clearing site data deletes it. From **Sessões**:
-
-| File | Columns |
+| Area | Details |
 |---|---|
-| `*-rr.csv` | `t_ms,rr_ms,accepted` — every beat, rejected ones flagged `0`, not dropped |
-| `*-hr.csv` | `t_s,bpm` |
-| `*-ecg.csv` | `t_s,ecg_uv` at 130 Hz |
-| `*-dfa.csv` | `t_s,alpha1,artifact_pct,beats,invalid_reason` |
-| `*.json` | full record (schema v2) plus summary; ECG excluded |
+| **Treino** | Free ride or structured workout. Phases with targets by zone or α1, spoken cues, 3-2-1 beeps, repeat cues (ramp: "suba um nível" every minute), off-target alerts after 30 s. Live HR with current zone and zone bar, α1, RMSSD, artifacts, respiration, cadence, kcal, ECG strip, charts. Focus mode (`F`) with huge numbers; `Espaço` marks a lap, `P` pauses. |
+| **Recording** | Saved every 10 s. If the strap goes silent for 6 s the workout pauses and resumes by itself when data returns; gaps are real gaps (DFA restarts after them). An interrupted workout (app closed, crash) can be resumed or finished from the Treino screen. |
+| **Limiares** | After a "Rampa DFA" the app regresses α1 on HR over the falling part of the curve and solves for 0.75 (HRVT1) and 0.50 (HRVT2), with R². One click updates your zones. |
+| **Zonas** | Polarized 3-zone model anchored on HRVT1/HRVT2; falls back to 77%/89% of max HR (measured, or 208 − 0.7 × age) and says so. |
+| **Semana** | Recurring weekly structure (preset: polarized 80/20), planned vs done, volume, load (Lucia TRIMP) and time per zone. |
+| **Histórico** | Per session: stats, HR coloured by zone, α1, respiration/cadence, phases & laps, HR recovery 60 s after each hard interval, HR drift, thresholds, notes and RPE. |
+| **Evolução** | HRVT1/HRVT2 over time, weekly volume per zone, fitness/fatigue (42/7-day EWMA of TRIMP), morning ln RMSSD, HR drift on long rides. |
+| **Teste matinal** | 90 s lying + 90 s standing. ln RMSSD vs your own 7-day baseline (after 3 tests). |
+| **Export** | FIT (records, laps, session, every R-R in HRV messages — Strava, Garmin Connect, TrainingPeaks, Intervals.icu; Intervals.icu runs its own DFA α1 on it), CSV (R-R, HR, α1, respiration/cadence, ECG) and JSON. |
 
-CSV uses `.` decimals and `,` separators, so it loads unchanged in Python, R or Kubios.
+## Signal processing
 
-## Layout
+- **R-R**: 0x2A37 at 1/1024 s. Beats outside 250–2000 ms or >20% off the median of the last 5 are
+  flagged, not dropped; five consistent "outliers" in a row are accepted as a real change of rhythm.
+- **DFA α1**: Peng et al., scales 4–16 beats, 120 s window every 5 s, in a Web Worker. Rejected beats
+  are interpolated; windows with >5% artifacts, <64 beats or no variability are withheld.
+- **ECG/ACC**: PMD service, frame type decides sample width (8/16/24-bit, delta-compressed).
+  Started only after the first HR packet; if it drops the link, the session continues HR-only.
+- **Respiration**: dominant 0.1–1.0 Hz oscillation of the chest accelerometer (no axis assumed)
+  fused with respiratory sinus arrhythmia from R-R, weighted by spectral prominence.
+- **Cadence**: the trunk sways once per crank revolution and bounces once per pedal stroke; the
+  strongest peak is resolved against its half/double on any axis. Trunk sway = RMS of that axis.
+
+## Development
+
+```sh
+npm test            # 120+ tests: parsers, DSP, storage, FIT (validated by an independent decoder), live session
+npm run typecheck
+```
 
 ```
-src/domain/ports/        sensor contract shared by real and simulated adapters
-src/domain/physiology/   pure parsers and HRV math (no DOM, fully tested)
-src/domain/session/      session record, summary, CSV/JSON export (pure)
-src/adapters/            Web Bluetooth H10, simulator, IndexedDB repository
-src/ui/                  React shell; canvases read typed ring buffers per animation frame
-tests/                   parser properties and HRV invariants
+src/domain/      pure logic, no DOM: physiology, workouts, athlete, session, analysis
+src/app/         live session, morning test, sensor hub, audio cues
+src/adapters/    Web Bluetooth H10, simulator, IndexedDB storage
+src/workers/     DFA + inertial DSP worker
+src/ui/          React screens, canvas charts
+electron/        desktop shell (main + preload)
 ```
+
+The simulator (Perfil → Fonte de dados) is deterministic: a 15-minute ramp where α1 falls through
+0.75, breathing rises 14 → 36 /min and cadence wanders around 90 rpm.

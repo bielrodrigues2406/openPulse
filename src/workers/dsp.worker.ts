@@ -1,15 +1,33 @@
 /// <reference lib="webworker" />
 import { DfaTracker } from '../domain/physiology/dfa-alpha1';
-import type { DspRequest, DspResponse } from './dsp.protocol';
+import { InertialTracker } from '../domain/physiology/inertial-fusion';
+import type { DspRequest, DspResponse, Tagged } from './dsp.protocol';
 
-let tracker = new DfaTracker();
+// Heavy signal processing lives here so the ECG canvas keeps its frame rate.
+let dfa = new DfaTracker();
+let inertial = new InertialTracker();
 
-self.onmessage = (e: MessageEvent<DspRequest>) => {
+// Replies carry the generation of the request that produced them, so the page can drop
+// results that belong to a segment it has already moved past.
+const post = (msg: Tagged<DspResponse>) => (self as DedicatedWorkerGlobalScope).postMessage(msg);
+
+self.onmessage = (e: MessageEvent<Tagged<DspRequest>>) => {
   const msg = e.data;
-  if (msg.type === 'reset') {
-    tracker = new DfaTracker();
-    return;
+  switch (msg.type) {
+    case 'reset':
+      dfa = new DfaTracker(msg.fromMs);
+      inertial = new InertialTracker(msg.fromMs);
+      return;
+    case 'beats': {
+      inertial.pushBeats(msg.beats);
+      const points = dfa.push(msg.beats);
+      if (points.length) post({ type: 'dfa', points, gen: msg.gen });
+      return;
+    }
+    case 'acc': {
+      const points = inertial.pushAcc(msg.samplesMg);
+      if (points.length) post({ type: 'inertial', points, gen: msg.gen });
+      return;
+    }
   }
-  const points = tracker.push(msg.beats);
-  if (points.length) (self as DedicatedWorkerGlobalScope).postMessage({ type: 'dfa', points } satisfies DspResponse);
 };

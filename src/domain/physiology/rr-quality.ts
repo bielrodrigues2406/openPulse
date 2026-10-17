@@ -8,12 +8,16 @@ export interface RrBeat {
   readonly tMs: number; // cumulative time of the beat, ms since session start
   readonly rrMs: number;
   readonly accepted: boolean;
+  /** First beat after a recording gap: its RR is not comparable with the previous beat. */
+  readonly gapBefore?: true;
 }
 
 export const RR_MIN_MS = 250;
 export const RR_MAX_MS = 2000;
 export const RR_MAX_RELATIVE_DEVIATION = 0.2;
 const MEDIAN_WINDOW = 5;
+/** Consecutive, mutually consistent rejections that mean "HR really changed", not artifacts. */
+const NEW_LEVEL_RUN = 5;
 
 export function classifyRr(rrMs: number, recentAccepted: readonly number[]): boolean {
   if (!(rrMs >= RR_MIN_MS && rrMs <= RR_MAX_MS)) return false;
@@ -26,11 +30,49 @@ export class RrSeries {
   private readonly beats: RrBeat[] = [];
   private readonly acceptedTail: number[] = [];
   private clockMs = 0;
+  private pendingGap = false;
+  private rejectedRun: number[] = [];
+
+  /** Rebuilds a series from stored beats (resuming a session). */
+  static from(beats: readonly RrBeat[]): RrSeries {
+    const s = new RrSeries();
+    s.beats.push(...beats);
+    s.clockMs = beats.at(-1)?.tMs ?? 0;
+    for (const b of beats) {
+      if (b.gapBefore) s.acceptedTail.length = 0;
+      if (b.accepted) s.acceptedTail.push(b.rrMs);
+      if (s.acceptedTail.length > MEDIAN_WINDOW) s.acceptedTail.shift();
+    }
+    return s;
+  }
+
+  /**
+   * Starts a new recording segment at wall-clock offset tMs. The next beat is flagged
+   * gapBefore and the artifact median restarts, since the strap may have moved.
+   */
+  resumeAt(tMs: number): void {
+    this.clockMs = Math.max(this.clockMs, tMs);
+    this.acceptedTail.length = 0;
+    this.pendingGap = this.beats.length > 0;
+  }
 
   push(rrMs: number): RrBeat {
-    const accepted = classifyRr(rrMs, this.acceptedTail);
+    let accepted = classifyRr(rrMs, this.acceptedTail);
+    if (!accepted && rrMs >= RR_MIN_MS && rrMs <= RR_MAX_MS) {
+      // A sustained step (standing up, a sprint) would otherwise lock every new beat out.
+      this.rejectedRun.push(rrMs);
+      if (this.rejectedRun.length > NEW_LEVEL_RUN) this.rejectedRun.shift();
+      const ref = median(this.rejectedRun);
+      if (this.rejectedRun.length === NEW_LEVEL_RUN && this.rejectedRun.every((v) => Math.abs(v - ref) / ref <= RR_MAX_RELATIVE_DEVIATION)) {
+        this.acceptedTail.length = 0;
+        this.acceptedTail.push(...this.rejectedRun.slice(0, -1));
+        accepted = true;
+      }
+    }
+    if (accepted) this.rejectedRun = [];
     this.clockMs += rrMs;
-    const beat: RrBeat = { tMs: this.clockMs, rrMs, accepted };
+    const beat: RrBeat = this.pendingGap ? { tMs: this.clockMs, rrMs, accepted, gapBefore: true } : { tMs: this.clockMs, rrMs, accepted };
+    this.pendingGap = false;
     this.beats.push(beat);
     if (accepted) {
       this.acceptedTail.push(rrMs);
@@ -58,7 +100,7 @@ export function rmssd(beats: readonly RrBeat[]): number | null {
   for (let i = 1; i < beats.length; i++) {
     const a = beats[i - 1]!;
     const b = beats[i]!;
-    if (!a.accepted || !b.accepted) continue;
+    if (!a.accepted || !b.accepted || b.gapBefore) continue;
     const d = b.rrMs - a.rrMs;
     sum += d * d;
     n++;

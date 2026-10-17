@@ -32,6 +32,7 @@ function fakeStrap(pmdDropsLink: boolean) {
     },
     async getPrimaryService(uuid: number | string) {
       if (uuid === 0x180d) return { getCharacteristic: async () => hr };
+      if (uuid === 0x180f) return { getCharacteristic: async () => ({ readValue: async () => new DataView(Uint8Array.of(90).buffer) }) };
       stats.pmdRequests++;
       if (pmdDropsLink) {
         queueMicrotask(() => gatt.disconnect());
@@ -62,9 +63,13 @@ describe('WebBluetoothH10Adapter', () => {
     const a = new WebBluetoothH10Adapter();
     const statuses: SensorStatus[] = [];
     a.onStatus((s) => statuses.push(s));
+    const battery: number[] = [];
+    a.onEvent((e) => e.kind === 'battery' && battery.push(e.percent));
     await a.connect();
+    await tick();
     expect(statuses.at(-1)).toEqual({ state: 'streaming', deviceName: 'Polar H10 TEST' });
     expect(stats.pmdRequests).toBe(0);
+    expect(battery).toEqual([90]);
   });
 
   it('when PMD drops the link: reconnects HR-only, never retries PMD, keeps the session alive', async () => {

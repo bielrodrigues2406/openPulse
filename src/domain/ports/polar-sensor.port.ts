@@ -3,7 +3,8 @@
 export type SensorEvent =
   | { readonly kind: 'hr'; readonly bpm: number; readonly rrMs: readonly number[]; readonly contact: boolean | null; readonly receivedAt: number }
   | { readonly kind: 'ecg'; readonly samplesUv: Int32Array; readonly receivedAt: number }
-  | { readonly kind: 'acc'; readonly samplesMg: Int16Array; readonly receivedAt: number }; // interleaved x,y,z
+  | { readonly kind: 'acc'; readonly samplesMg: Int16Array; readonly receivedAt: number } // interleaved x,y,z
+  | { readonly kind: 'battery'; readonly percent: number };
 
 export type SensorStatus =
   | { readonly state: 'idle' }

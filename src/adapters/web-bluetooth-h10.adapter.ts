@@ -5,6 +5,8 @@ import type { DiagnosticsSource } from '../domain/ports/polar-sensor.port';
 import { SensorBase } from './listeners';
 
 const HR_SERVICE = 0x180d;
+const BATTERY_SERVICE = 0x180f;
+const BATTERY_LEVEL = 0x2a19;
 const HR_MEASUREMENT = 0x2a37;
 const PMD_SERVICE = 'fb005c80-02e7-f387-1cad-8acd2d8df0c8';
 const PMD_CONTROL = 'fb005c81-02e7-f387-1cad-8acd2d8df0c8';
@@ -78,7 +80,7 @@ export class WebBluetoothH10Adapter extends SensorBase implements DiagnosticsSou
     try {
       const device = await bluetooth.requestDevice({
         filters: [{ namePrefix: 'Polar H10' }],
-        optionalServices: [HR_SERVICE, PMD_SERVICE],
+        optionalServices: [HR_SERVICE, PMD_SERVICE, BATTERY_SERVICE],
       });
       this.step(`escolhido: ${device.name ?? '?'}`);
       this.device = device;
@@ -87,6 +89,7 @@ export class WebBluetoothH10Adapter extends SensorBase implements DiagnosticsSou
       device.addEventListener('gattserverdisconnected', this.handleDisconnect);
       await this.openHrLink(device);
       this.step('pronto (FC); ECG começa após o primeiro batimento');
+      void this.readBattery();
       this.setStatus({ state: 'streaming', deviceName: this.statusName() });
     } catch (err) {
       this.step(`falhou: ${errText(err)}`);
@@ -121,6 +124,18 @@ export class WebBluetoothH10Adapter extends SensorBase implements DiagnosticsSou
     });
     this.pmd = 'off';
     this.pmdControl = null; // characteristics from a previous link need fresh subscriptions
+  }
+
+  /** Optional and best effort: some stacks refuse it; the session does not depend on it. */
+  private async readBattery(): Promise<void> {
+    try {
+      const ch = await (await this.server!.getPrimaryService(BATTERY_SERVICE)).getCharacteristic(BATTERY_LEVEL);
+      const v = await ch.readValue();
+      this.emit({ kind: 'battery', percent: v.getUint8(0) });
+      this.step(`bateria ${v.getUint8(0)}%`);
+    } catch (err) {
+      this.step(`bateria indisponível: ${errText(err)}`);
+    }
   }
 
   private statusName(): string {

@@ -106,7 +106,7 @@ export function correctedRr(beats: readonly RrBeat[]): number[] | null {
 
 export type DfaPoint =
   | { readonly tS: number; readonly alpha1: number; readonly artifactPct: number; readonly beats: number }
-  | { readonly tS: number; readonly alpha1: null; readonly reason: 'artifacts' | 'too-few-beats'; readonly artifactPct: number; readonly beats: number };
+  | { readonly tS: number; readonly alpha1: null; readonly reason: 'artifacts' | 'too-few-beats' | 'no-variability'; readonly artifactPct: number; readonly beats: number };
 
 /**
  * Sliding-window tracker: feed beats in order; emits one point per 5 s of beat time
@@ -114,11 +114,17 @@ export type DfaPoint =
  */
 export class DfaTracker {
   private readonly beats: RrBeat[] = [];
-  private nextAtMs = DFA_WINDOW_MS;
+  private nextAtMs: number;
+
+  /** fromMs: start of a recording segment; windows never reach back across it. */
+  constructor(private readonly fromMs = 0) {
+    this.nextAtMs = fromMs + DFA_WINDOW_MS;
+  }
 
   push(newBeats: readonly RrBeat[]): DfaPoint[] {
     const out: DfaPoint[] = [];
     for (const beat of newBeats) {
+      if (beat.tMs <= this.fromMs) continue;
       this.beats.push(beat);
       while (beat.tMs >= this.nextAtMs) {
         out.push(this.evaluate(this.nextAtMs));
@@ -142,6 +148,11 @@ export class DfaTracker {
     if (rejected / win.length > DFA_MAX_ARTIFACT_RATE) return { ...base, alpha1: null, reason: 'artifacts' };
     const rr = correctedRr(win);
     if (!rr) return { ...base, alpha1: null, reason: 'artifacts' };
-    return { ...base, alpha1: dfaAlpha1(rr) };
+    try {
+      return { ...base, alpha1: dfaAlpha1(rr) };
+    } catch {
+      // A perfectly regular series (paced beats, a stuck sensor) has no fractal structure.
+      return { ...base, alpha1: null, reason: 'no-variability' };
+    }
   }
 }

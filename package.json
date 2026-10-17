@@ -7,20 +7,69 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc -b",
-    "test": "vitest run"
+    "typecheck": "tsc -b && tsc -p electron/tsconfig.json --noEmit",
+    "test": "vitest run",
+    "desktop": "npm run build && tsc -p electron/tsconfig.json && electron .",
+    "desktop:dist": "npm run build && tsc -p electron/tsconfig.json && electron-builder --win --x64"
   },
   "dependencies": {
+    "@fontsource/ibm-plex-mono": "5.2.5",
+    "@fontsource/ibm-plex-sans": "5.2.5",
     "react": "19.1.0",
     "react-dom": "19.1.0"
   },
   "devDependencies": {
+    "@types/node": "22.20.5",
     "@types/react": "19.1.8",
     "@types/react-dom": "19.1.6",
     "@vitejs/plugin-react": "4.5.2",
-    "fake-indexeddb": "^6.0.0",
+    "electron": "38.8.6",
+    "electron-builder": "26.0.20",
+    "fake-indexeddb": "6.0.0",
+    "fit-file-parser": "6.2.2",
     "typescript": "5.8.3",
     "vite": "6.3.5",
     "vitest": "3.2.4"
+  },
+  "description": "Polar H10 training cockpit: ECG, DFA α1 thresholds, zones, respiration and cadence. Local-first.",
+  "main": "dist-electron/main.cjs",
+  "build": {
+    "appId": "app.openpulse.desktop",
+    "productName": "openPulse",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**",
+      "dist-electron/**",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "openPulse"
+    },
+    "portable": {
+      "artifactName": "openPulse-${version}-portable.exe"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "build/icon.png",
+      "category": "public.app-category.healthcare-fitness"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "build/icon.png",
+      "category": "Sports"
+    }
   }
 }

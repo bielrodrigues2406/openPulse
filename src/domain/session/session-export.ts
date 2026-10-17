@@ -14,14 +14,28 @@ export function hrToCsv(s: SessionRecord): string {
   return ['t_s,bpm', ...s.hr.map((p) => `${fixed(p.tS, 3)},${p.bpm}`)].join('\n') + '\n';
 }
 
+/** Time comes from the segment each sample belongs to, so gaps stay visible in t_s. */
 export function ecgToCsv(s: SessionRecord, ecgUv: Int32Array): string {
   if (ecgUv.length !== s.ecgSampleCount) {
     throw new RangeError(`ECG has ${ecgUv.length} samples, record says ${s.ecgSampleCount}`);
   }
   const lines = new Array<string>(ecgUv.length + 1);
   lines[0] = 't_s,ecg_uv';
-  for (let i = 0; i < ecgUv.length; i++) lines[i + 1] = `${fixed(i / s.ecgHz, 4)},${ecgUv[i]}`;
-  return lines.join('\n') + '\n';
+  let i = 0;
+  for (const seg of s.ecgSegments) {
+    for (let k = 0; k < seg.samples && i < ecgUv.length; k++, i++) {
+      lines[i + 1] = `${fixed(seg.startMs / 1000 + k / s.ecgHz, 4)},${ecgUv[i]}`;
+    }
+  }
+  return lines.slice(0, i + 1).join('\n') + '\n';
+}
+
+export function inertialToCsv(s: SessionRecord): string {
+  const v = (n: number | null, d: number) => (n === null ? '' : fixed(n, d));
+  const rows = s.inertial.map(
+    (p) => `${fixed(p.tS, 1)},${v(p.breathsPerMin, 2)},${p.breathSource ?? ''},${fixed(p.breathConfidence, 2)},${v(p.rpm, 1)},${fixed(p.rpmConfidence, 2)},${v(p.swayMg, 1)}`,
+  );
+  return ['t_s,breaths_per_min,breath_source,breath_confidence,rpm,rpm_confidence,sway_mg', ...rows].join('\n') + '\n';
 }
 
 export function dfaToCsv(s: SessionRecord): string {

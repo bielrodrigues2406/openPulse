@@ -7,11 +7,16 @@ export interface Frame {
   readonly color: (token: string) => string;
 }
 
-/** Sizes the canvas to its box at device pixel ratio and calls draw on every animation frame. */
-export function useCanvasLoop(draw: (frame: Frame) => void) {
+/**
+ * Sizes the canvas to its box at device pixel ratio and draws. live = every animation frame
+ * (streaming data); otherwise only on resize and when `version` changes.
+ */
+export function useCanvasLoop(draw: (frame: Frame) => void, opts: { live?: boolean; version?: unknown } = {}) {
   const ref = useRef<HTMLCanvasElement>(null);
   const drawRef = useRef(draw);
   drawRef.current = draw;
+  const redrawRef = useRef<() => void>(() => {});
+  const live = opts.live ?? true;
 
   useEffect(() => {
     const canvas = ref.current;
@@ -20,7 +25,13 @@ export function useCanvasLoop(draw: (frame: Frame) => void) {
     let width = 0;
     let height = 0;
     const styles = getComputedStyle(canvas);
-    const color = (token: string) => styles.getPropertyValue(token).trim();
+    const color = (token: string) => (token.startsWith('--') ? styles.getPropertyValue(token).trim() : token);
+    const paint = () => {
+      if (width <= 0 || height <= 0) return;
+      ctx.clearRect(0, 0, width, height);
+      drawRef.current({ ctx, width, height, color });
+    };
+    redrawRef.current = paint;
 
     const resize = new ResizeObserver(([entry]) => {
       if (!entry) return;
@@ -30,29 +41,27 @@ export function useCanvasLoop(draw: (frame: Frame) => void) {
       canvas.width = Math.round(width * dpr);
       canvas.height = Math.round(height * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      paint();
     });
     resize.observe(canvas);
 
     let raf = 0;
-    const loop = () => {
-      if (width > 0 && height > 0) {
-        ctx.clearRect(0, 0, width, height);
-        drawRef.current({ ctx, width, height, color });
-      }
+    if (live) {
+      const loop = () => {
+        paint();
+        raf = requestAnimationFrame(loop);
+      };
       raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
+    }
     return () => {
       cancelAnimationFrame(raf);
       resize.disconnect();
     };
-  }, []);
+  }, [live]);
+
+  useEffect(() => {
+    if (!live) redrawRef.current();
+  }, [live, opts.version]);
 
   return ref;
-}
-
-export function niceRange(min: number, max: number, minSpan: number): [number, number] {
-  const span = Math.max(max - min, minSpan);
-  const mid = (min + max) / 2;
-  return [mid - span * 0.6, mid + span * 0.6];
 }

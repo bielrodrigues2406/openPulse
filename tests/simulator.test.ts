@@ -32,3 +32,29 @@ describe('simulated ramp test', () => {
     expect(pts.every((p) => p.alpha1 !== null)).toBe(true);
   });
 });
+
+import { vi } from 'vitest';
+import { SimulatedH10Adapter } from '../src/adapters/simulated-h10.adapter';
+import { InertialTracker } from '../src/domain/physiology/inertial-fusion';
+
+describe('simulated accelerometer', () => {
+  it('feeds the inertial pipeline with ~90 rpm and the ramp breathing rate', async () => {
+    vi.useFakeTimers();
+    const sim = new SimulatedH10Adapter();
+    const tracker = new InertialTracker();
+    const points: ReturnType<InertialTracker['pushAcc']> = [];
+    sim.onEvent((e) => {
+      if (e.kind === 'acc') points.push(...tracker.pushAcc(e.samplesMg));
+    });
+    await sim.connect();
+    await vi.advanceTimersByTimeAsync(120_000);
+    sim.disconnect();
+    vi.useRealTimers();
+    const last = points.at(-1)!;
+    expect(last.rpm!).toBeGreaterThan(85);
+    expect(last.rpm!).toBeLessThan(95);
+    // At t = 2 min the simulated rate is 14 + 22·(2/15) ≈ 16.9 /min (averaged over the window).
+    expect(last.breathsPerMin!).toBeGreaterThan(15);
+    expect(last.breathsPerMin!).toBeLessThan(18.5);
+  });
+});

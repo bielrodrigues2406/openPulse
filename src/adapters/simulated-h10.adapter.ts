@@ -2,7 +2,9 @@ import { SensorBase } from './listeners';
 
 /**
  * Deterministic physiological simulator: same seed, same stream.
- * RR follows a 15 min ramp test (see RampRrModel);
+ * RR follows a 15 min ramp test (see RampRrModel); breathing speeds up from 14 to 36 per
+ * minute along the ramp and shows both in RSA and in the chest accelerometer; cadence wanders
+ * around 88–92 rpm with the trunk swaying once per revolution and bouncing once per stroke;
  * ECG is a sum of Gaussian P/QRS/T waves placed on those beats; occasional ectopic beats
  * exercise the artifact gate.
  */
@@ -47,6 +49,7 @@ export class SimulatedH10Adapter extends SensorBase {
     if (this.timer) return;
     this.reset();
     this.setStatus({ state: 'streaming', deviceName: 'Simulador H10' });
+    this.emit({ kind: 'battery', percent: 87 });
     this.timer = setInterval(() => this.advance(TICK_MS), TICK_MS);
   }
 
@@ -89,13 +92,14 @@ export class SimulatedH10Adapter extends SensorBase {
       this.ecgIndex++;
     }
     while ((this.accIndex * 1000) / ACC_HZ < end) {
-      const t = this.accIndex / ACC_HZ;
-      const breath = Math.sin(2 * Math.PI * 0.25 * t);
-      const pedal = Math.sin(2 * Math.PI * 1.5 * t);
+      const tMs = (this.accIndex * 1000) / ACC_HZ;
+      const breath = Math.sin(breathPhase(tMs));
+      const crank = crankPhase(tMs);
+      const n = () => (this.random() - 0.5) * 8;
       this.accBuffer.push(
-        Math.round(-20 + 25 * pedal + (this.random() - 0.5) * 8),
-        Math.round(-980 + 15 * pedal + (this.random() - 0.5) * 8),
-        Math.round(60 + 30 * breath + (this.random() - 0.5) * 8),
+        Math.round(-20 + 25 * Math.sin(crank) + n()), // lateral sway: once per revolution
+        Math.round(-980 + 12 * Math.sin(2 * crank) + 4 * breath + n()), // vertical: once per pedal stroke
+        Math.round(60 + 30 * breath + n()), // chest wall: breathing
       );
       this.accIndex++;
     }
@@ -148,9 +152,26 @@ export class RampRrModel {
     const gauss = Math.sqrt(-2 * Math.log(1 - random())) * Math.cos(2 * Math.PI * random());
     this.ar = 0.95 * this.ar + gauss;
     const correlated = (1 - p) ** 1.5 * 15 * this.ar;
-    const rsa = 8 * (1 - p) ** 2 * Math.sin((2 * Math.PI * tMs) / 4000);
+    const rsa = 8 * (1 - p) ** 2 * Math.sin(breathPhase(tMs));
     const white = (6 + 4 * p) * (random() - 0.5) * 3.4;
     const rr = base + correlated + rsa + white;
     return random() < 0.01 ? rr * 0.65 : rr;
   }
+}
+
+const RAMP_S = RampRrModel.RAMP_MS / 1000;
+
+/** Breathing phase (rad) for a rate rising linearly 14 → 36 /min over the ramp, then flat. */
+export function breathPhase(tMs: number): number {
+  const t = tMs / 1000;
+  const k = (2 * Math.PI) / 60;
+  if (t <= RAMP_S) return k * (14 * t + (11 * t * t) / RAMP_S);
+  return k * (14 * RAMP_S + 11 * RAMP_S + 36 * (t - RAMP_S));
+}
+
+/** Crank phase (rad): 90 rpm ± 2 with a slow 40 s wander. */
+export function crankPhase(tMs: number): number {
+  const t = tMs / 1000;
+  const k = (2 * Math.PI) / 60;
+  return k * (90 * t - 2 * 40 * Math.cos(t / 40));
 }

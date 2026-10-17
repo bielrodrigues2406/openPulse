@@ -51,3 +51,36 @@ describe('artifactRate', () => {
     expect(artifactRate([])).toBeNull();
   });
 });
+
+describe('sustained HR change', () => {
+  it('accepts a new level after 5 consistent beats instead of rejecting it forever', () => {
+    const beats = feed([...Array(10).fill(1100), ...Array(12).fill(650)]).all();
+    const after = beats.slice(10).map((b) => b.accepted);
+    expect(after.slice(0, 4)).toEqual([false, false, false, false]);
+    expect(after.slice(4).every(Boolean)).toBe(true);
+  });
+
+  it('isolated ectopics in between normal beats are still rejected', () => {
+    const beats = feed([800, 810, 790, 805, 795, 500, 800, 1100, 805, 500, 800]).all();
+    expect(beats.map((b) => b.accepted)).toEqual([true, true, true, true, true, false, true, false, true, false, true]);
+  });
+});
+
+describe('segments', () => {
+  it('resumeAt jumps the clock, restarts the median, and flags the first beat after the gap', () => {
+    const s = feed([800, 800, 800]);
+    s.resumeAt(60_000);
+    const b = s.push(500);
+    expect(b).toMatchObject({ tMs: 60_500, accepted: true, gapBefore: true });
+    expect(s.push(510).gapBefore).toBeUndefined();
+    // The pair across the gap (800 → 500) is not used by RMSSD.
+    expect(rmssd(s.all())).toBeCloseTo(Math.sqrt((0 + 0 + 100) / 3), 10);
+  });
+
+  it('from() rebuilds a series that continues like the original', () => {
+    const a = feed([800, 810, 790, 805, 795]);
+    const b = RrSeries.from(a.all());
+    expect(b.push(560).accepted).toBe(a.push(560).accepted);
+    expect(b.all().at(-1)!.tMs).toBe(a.all().at(-1)!.tMs);
+  });
+});

@@ -112,3 +112,17 @@ describe('DfaTracker', () => {
     expect(new DfaTracker().push(beatsFrom(slow))[0]).toMatchObject({ alpha1: null, reason: 'too-few-beats' });
   });
 });
+
+describe('DfaTracker robustness', () => {
+  it('withholds a window with no variability instead of throwing', () => {
+    const [p] = new DfaTracker().push(beatsFrom(new Array(200).fill(800)));
+    expect(p).toMatchObject({ alpha1: null, reason: 'no-variability' });
+  });
+
+  it('a tracker started at a segment ignores earlier beats and waits 120 s after it', () => {
+    const beats = beatsFrom(white(500, 4));
+    const t = new DfaTracker(100_000);
+    const pts = t.push(beats);
+    expect(pts[0]!.tS).toBe(220);
+  });
+});
