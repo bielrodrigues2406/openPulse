@@ -115,8 +115,10 @@ export class SimulatedH10Adapter extends SensorBase {
     if (end - this.lastHrEmitMs >= 1000) {
       this.lastHrEmitMs = end;
       const rr = this.pendingRr.splice(0);
-      const mean = rr.length ? rr.reduce((a, b) => a + b, 0) / rr.length : 800;
-      this.emit({ kind: 'hr', bpm: Math.round(60000 / mean), rrMs: rr, contact: true, receivedAt: now });
+      // Like the strap's own HR value: robust to a single premature beat.
+      const sorted = [...rr].sort((a, b) => a - b);
+      const typical = sorted.length ? sorted[sorted.length >> 1]! : 800;
+      this.emit({ kind: 'hr', bpm: Math.round(60000 / typical), rrMs: rr, contact: true, receivedAt: now });
     }
   }
 

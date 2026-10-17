@@ -1,6 +1,6 @@
 import { readiness, ORTHO_LYING_S, ORTHO_STANDING_S, type OrthostaticResult } from '../../domain/physiology/orthostatic';
 import { Section, Stat } from '../components/ui';
-import { dayLabel, fmt, timeOnly } from '../format';
+import { dayLabel, fmt, plural, signed, timeOnly } from '../format';
 import { useData, useHub, useMorning, useServices } from '../services';
 
 const READY_TEXT = {
@@ -57,7 +57,7 @@ export function MorningScreen() {
       {st.step === 'done' && <Result r={st.result} history={d.morning} />}
       {st.step === 'idle' && history[0] && <Result r={history[0]} history={d.morning} />}
 
-      <Section title="Histórico" meta={`${history.length} testes`} flush>
+      <Section title="Histórico" meta={plural(history.length, 'teste', 'testes')} flush>
         {history.length ? (
           <div style={{ overflowX: 'auto' }}>
             <table className="table">
@@ -111,7 +111,7 @@ function Result({ r, history }: { r: OrthostaticResult; history: readonly Orthos
         <Stat label="ln RMSSD deitado" value={fmt(r.lnRmssd, 2)} color="var(--sig-dfa)" />
         <Stat label="RMSSD deitado" value={fmt(r.lyingRmssd, 0)} unit="ms" />
         <Stat label="FC deitado" value={fmt(r.lyingHr, 0)} unit="bpm" />
-        <Stat label="FC em pé" value={fmt(r.standingHr, 0)} unit="bpm" note={`+${fmt(r.standingHr - r.lyingHr, 0)} ao levantar`} />
+        <Stat label="FC em pé" value={fmt(r.standingHr, 0)} unit="bpm" note={`${signed(r.standingHr - r.lyingHr)} bpm ao levantar`} />
         <Stat label="Pico ao levantar" value={fmt(r.peakHr, 0)} unit="bpm" />
         <Stat label="RMSSD em pé" value={fmt(r.standingRmssd, 0)} unit="ms" />
       </div>

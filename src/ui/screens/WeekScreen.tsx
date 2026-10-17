@@ -3,7 +3,7 @@ import { weeklyLoads } from '../../domain/analysis/trends';
 import { zoneBounds } from '../../domain/athlete/profile';
 import { EMPTY_WEEK, POLARIZED_WEEK, WEEKDAYS, addDays, mondayOf, resolveWeek, type WeekPlan } from '../../domain/workouts/week-plan';
 import { ZoneDistribution } from '../components/ui';
-import { KIND_LABEL, duration, fmt, shortDay } from '../format';
+import { KIND_LABEL, duration, fmt, plural, shortDay } from '../format';
 import { href } from '../router';
 import { useData, useServices } from '../services';
 
@@ -53,7 +53,7 @@ export function WeekScreen() {
         <div className="stat">
           <div className="stat-label">Treinos do plano</div>
           <div className="stat-value">{doneCount}<small>de {plannedCount}</small></div>
-          <div className="stat-note">{load.sessions} sessões no total</div>
+          <div className="stat-note">{plural(load.sessions, 'sessão', 'sessões')} no total</div>
         </div>
         <div className="stat">
           <div className="stat-label">Carga</div>

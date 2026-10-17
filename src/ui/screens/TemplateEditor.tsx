@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { describeTarget, totalDurationS, validateTemplate, type Phase, type Sport, type Target, type WorkoutKind, type WorkoutTemplate } from '../../domain/workouts/workout';
 import { Segmented } from '../components/ui';
-import { KIND_LABEL, SPORT_LABEL, duration } from '../format';
+import { KIND_LABEL, SPORT_LABEL, duration, plural } from '../format';
 import { go, href } from '../router';
 import { useData, useServices } from '../services';
 import { PhaseStrip } from './TrainScreen';
@@ -77,7 +77,7 @@ function Editor(p: { initial: WorkoutTemplate | null; save: (t: WorkoutTemplate)
         <div>
           <a href={href({ name: 'library' })} className="faint" style={{ fontSize: 13, textDecoration: 'none' }}>← Treinos</a>
           <h1 style={{ marginTop: 6 }}>{p.initial ? 'Editar treino' : 'Novo treino'}</h1>
-          <p className="sub">{t.phases.length} fases · {duration(totalDurationS(t.phases))}</p>
+          <p className="sub">{plural(t.phases.length, 'fase', 'fases')} · {duration(totalDurationS(t.phases))}</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           {p.initial && (

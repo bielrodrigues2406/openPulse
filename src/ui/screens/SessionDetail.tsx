@@ -9,7 +9,7 @@ import { dfaToCsv, ecgToCsv, fileStem, hrToCsv, inertialToCsv, rrToCsv, sessionT
 import { Timeline } from '../components/Timeline';
 import { Section, Segmented, Stat, ZoneDistribution } from '../components/ui';
 import { download } from '../download';
-import { KIND_LABEL, SPORT_LABEL, clock, dateTime, duration, fmt } from '../format';
+import { KIND_LABEL, SPORT_LABEL, clock, dateTime, duration, fmt, plural, signed } from '../format';
 import { go, href } from '../router';
 import { useData, useServices } from '../services';
 import { sessionNumbers } from '../session-numbers';
@@ -104,7 +104,7 @@ function Detail({ rec }: { rec: SessionRecord }) {
         <Stat label="α1 mínimo" value={fmt(n.minAlpha1, 2)} color="var(--sig-dfa)" />
         <Stat label="Respiração média" value={fmt(n.meanBreaths)} unit="irpm" estimate />
         <Stat label="Cadência média" value={fmt(n.meanRpm)} unit="rpm" estimate />
-        <Stat label="Drift de FC" value={n.driftPct === null ? '—' : `${n.driftPct > 0 ? '+' : ''}${fmt(n.driftPct, 1)}`} unit="%" title="FC da 2ª metade vs 1ª metade do bloco principal" />
+        <Stat label="Drift de FC" value={signed(n.driftPct, 1)} unit="%" title="FC da 2ª metade vs 1ª metade do bloco principal" />
         <Stat label="Artefatos" value={fmt(n.artifactPct, 1)} unit="%" color={n.artifactPct !== null && n.artifactPct > 5 ? 'var(--danger)' : undefined} />
         <Stat label="Esforço" value={rec.rpe ?? '—'} unit={rec.rpe ? '/10' : undefined} />
       </div>
@@ -128,6 +128,7 @@ function Detail({ rec }: { rec: SessionRecord }) {
             version={rec}
             x={x}
             y="auto"
+            minSpan={30}
             height={220}
             refs={bounds ? [{ y: bounds.vt1, label: `VT1 ${bounds.vt1}` }, { y: bounds.vt2, label: `VT2 ${bounds.vt2}` }] : []}
             phases={rec.workout?.phases.length ? () => ({ phases: rec.workout!.phases, segments: rec.segments }) : undefined}
@@ -174,7 +175,7 @@ function Detail({ rec }: { rec: SessionRecord }) {
 
         <Section
           title="Limiares"
-          meta={th ? `R² ${fmt(th.r2, 2)} · ${th.points} janelas` : undefined}
+          meta={th ? `R² ${fmt(th.r2, 2)} · ${plural(th.points, 'janela', 'janelas')}` : undefined}
           actions={<button className="btn sm" onClick={() => void recompute()}>{th ? 'Recalcular' : 'Estimar pelo α1'}</button>}
         >
           {th ? (

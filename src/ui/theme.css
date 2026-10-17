@@ -153,6 +153,7 @@ a { color: inherit; }
 .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .field > span { font-size: 12px; color: var(--text-dim); }
 .field small { color: var(--text-faint); font-size: 12px; }
+.field > .segmented { align-self: flex-start; }
 .input, .select, .textarea {
   height: 36px; padding: 0 11px; border-radius: var(--r-sm); border: 1px solid var(--line-strong);
   background: var(--surface); color: var(--text); width: 100%;
@@ -189,7 +190,7 @@ a { color: inherit; }
 
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); overflow: hidden; }
 .stat { padding: 16px 18px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); margin: 0 -1px -1px 0; min-width: 0; }
-.stat-label { font-size: 12px; color: var(--text-dim); display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.stat-label { font-size: 12px; color: var(--text-dim); display: flex; align-items: center; gap: 4px 6px; flex-wrap: wrap; }
 .stat-value { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 28px; line-height: 1.1; margin-top: 8px; letter-spacing: -0.02em; white-space: nowrap; }
 .stat-value small { font-family: var(--sans); font-size: 12px; color: var(--text-faint); margin-left: 5px; letter-spacing: 0; }
 .stat-note { font-size: 12px; color: var(--text-faint); margin-top: 4px; }
@@ -375,7 +376,8 @@ a { color: inherit; }
 .plan-item.extra { border-style: dashed; }
 .plan-item.extra:hover { background: var(--raised); }
 .plan-name { font-weight: 500; font-size: 13px; line-height: 1.3; padding-right: 14px; }
-.plan-meta { display: flex; justify-content: space-between; gap: 6px; margin-top: 4px; font-size: 11px; color: var(--text-faint); font-family: var(--mono); }
+.plan-meta { display: flex; justify-content: space-between; gap: 2px 6px; flex-wrap: wrap; margin-top: 4px; font-size: 11px; color: var(--text-faint); font-family: var(--mono); }
+.plan-meta span { white-space: nowrap; }
 .plan-state { font-size: 11px; color: var(--text-faint); margin-top: 4px; }
 .plan-state a { color: var(--ok); text-decoration: none; }
 .plan-remove { position: absolute; top: 4px; right: 4px; background: none; border: 0; color: var(--text-faint); cursor: pointer; font-size: 16px; line-height: 1; padding: 2px 5px; }
@@ -442,3 +444,4 @@ a { color: inherit; }
 .zone-row { border-left: 3px solid; padding: 4px 0 4px 14px; display: flex; flex-direction: column; gap: 4px; }
 @media (max-width: 760px) { .zones-table, .form-grid { grid-template-columns: 1fr; } }
 .grid-2 > .section, .grid-3 > .section { margin-top: 0; }
+a.btn { text-decoration: none; }

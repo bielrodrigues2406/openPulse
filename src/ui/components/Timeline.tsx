@@ -28,6 +28,8 @@ export interface TimelineProps {
   /** Visible x range in seconds. */
   readonly x: () => readonly [number, number];
   readonly y: { readonly min: number; readonly max: number; readonly step: number; readonly fmt?: (v: number) => string } | 'auto';
+  /** With y = 'auto': the smallest span to show (bpm charts look broken at ±0.5). */
+  readonly minSpan?: number | undefined;
   readonly refs?: readonly Reference[] | undefined;
   readonly band?: { readonly from: number; readonly to: number; readonly color: string } | undefined;
   readonly phases?: (() => { readonly phases: readonly Phase[]; readonly segments: readonly Segment[] }) | undefined;
@@ -63,10 +65,17 @@ function paint({ ctx, width, height, color }: Frame, p: TimelineProps): void {
   const all = p.series.map((s) => s.points());
   let y = p.y;
   if (y === 'auto') {
-    const vals = all.flat().filter((q) => q.t >= x0 && q.t <= x1 && q.v !== null).map((q) => q.v!);
-    const lo = vals.length ? Math.min(...vals) : 0;
-    const hi = vals.length ? Math.max(...vals) : 1;
-    const span = Math.max(hi - lo, 1);
+    // 1st–99th percentile: a single artifact spike must not flatten the whole trace.
+    const vals = all.flat().filter((q) => q.t >= x0 && q.t <= x1 && q.v !== null).map((q) => q.v!).sort((a, b) => a - b);
+    let lo = vals.length ? vals[Math.floor(vals.length * 0.01)]! : 0;
+    let hi = vals.length ? vals[Math.min(vals.length - 1, Math.ceil(vals.length * 0.99) - 1)]! : 1;
+    const minSpan = p.minSpan ?? 1;
+    if (hi - lo < minSpan) {
+      const mid = (hi + lo) / 2;
+      lo = mid - minSpan / 2;
+      hi = mid + minSpan / 2;
+    }
+    const span = hi - lo;
     const step = niceStep(span / 4);
     y = { min: Math.floor((lo - span * 0.1) / step) * step, max: Math.ceil((hi + span * 0.1) / step) * step, step };
   }

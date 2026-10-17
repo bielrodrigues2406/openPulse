@@ -108,3 +108,16 @@ describe('InertialTracker', () => {
     expect(points[0]!.rpm).not.toBeNull();
   });
 });
+
+describe('estimateCadence with fast breathing', () => {
+  const fs = 25;
+  const n = 250;
+  it('breathing at 36/min stronger than the sway is not read as cadence', () => {
+    const c = estimateCadence([add(sine(n, fs, 1.5, 20), noise(n, 4, 1)), add(sine(n, fs, 3, 10), noise(n, 4, 2)), add(sine(n, fs, 0.6, 45), noise(n, 4, 3))], fs);
+    expect(c!.crankHz * 60).toBeCloseTo(90, 0);
+  });
+  it('breathing locked at half the crank rate does not halve the cadence', () => {
+    const c = estimateCadence([add(sine(n, fs, 1.5, 20), noise(n, 4, 1)), add(sine(n, fs, 3, 10), noise(n, 4, 2)), add(sine(n, fs, 0.75, 30), noise(n, 4, 3))], fs);
+    expect(c!.crankHz * 60).toBeCloseTo(90, 0);
+  });
+});

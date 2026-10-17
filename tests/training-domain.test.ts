@@ -126,7 +126,7 @@ describe('estimateThresholds', () => {
     const e = estimateThresholds(dfa, hr)!;
     expect(e.hrvt1).not.toBeNull();
     expect(e.hrvt2).toBeNull();
-    expect(e.notes.join(' ')).toMatch(/0,50/);
+    expect(e.notes.join(' ')).toMatch(/não chegou perto de 0,50/);
   });
 
   it('returns null without enough valid windows', () => {

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { ZoneDistribution } from '../components/ui';
-import { KIND_LABEL, SPORT_LABEL, dayLabel, duration, fmt, monthTitle, timeOnly } from '../format';
+import { KIND_LABEL, SPORT_LABEL, dayLabel, duration, fmt, monthTitle, plural, timeOnly } from '../format';
 import { go, href } from '../router';
 import { useData } from '../services';
 import { sessionNumbers } from '../session-numbers';
@@ -23,7 +23,7 @@ export function HistoryScreen() {
       <div className="page-head">
         <div>
           <h1>Histórico</h1>
-          <p className="sub">{d.sessions.length ? `${d.sessions.length} treinos gravados neste dispositivo` : 'Os treinos que você gravar aparecem aqui.'}</p>
+          <p className="sub">{d.sessions.length ? `${plural(d.sessions.length, 'treino gravado', 'treinos gravados')} neste dispositivo` : 'Os treinos que você gravar aparecem aqui.'}</p>
         </div>
       </div>
       {!d.sessions.length && d.loaded && (

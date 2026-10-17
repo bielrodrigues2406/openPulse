@@ -362,6 +362,7 @@ function LivePanels({ s }: { s: LiveSnapshot }) {
             label="Frequência cardíaca, últimos 10 minutos"
             x={lastX(600)}
             y="auto"
+            minSpan={30}
             refs={b ? [{ y: b.vt1, label: `VT1 ${b.vt1}` }, { y: b.vt2, label: `VT2 ${b.vt2}` }] : []}
             segments={() => live.segments()}
             series={[{ points: () => live.hr.map((p) => ({ t: p.tS, v: p.bpm })), color: '--sig-hr', width: 2, ...(zoneColor ? { colorOf: zoneColor } : {}) }]}
@@ -376,6 +377,7 @@ function LivePanels({ s }: { s: LiveSnapshot }) {
             label="Intervalos R-R, últimos 2 minutos"
             x={lastX(120)}
             y="auto"
+            minSpan={200}
             height={160}
             series={[
               { points: () => live.rr.window(150_000).map((b) => ({ t: b.tMs / 1000, v: b.accepted && !b.gapBefore ? b.rrMs : null })), color: '--sig-rr', width: 1.3 },

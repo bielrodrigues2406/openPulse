@@ -66,8 +66,15 @@ export function estimateThresholds(dfa: readonly DfaPoint[], hr: readonly HrSamp
 
   let hrvt1 = alphaMax >= VT1_ALPHA1 && alphaMin <= VT1_ALPHA1 + 0.05 ? solve(VT1_ALPHA1) : null;
   if (hrvt1 === null && notes.length === 0) notes.push('O α1 não cruzou 0,75 durante o teste.');
-  let hrvt2 = alphaMin <= VT2_ALPHA1 + 0.05 ? solve(VT2_ALPHA1) : null;
-  if (hrvt2 === null && notes.length === 0) notes.push('O α1 não chegou perto de 0,50; HRVT2 não estimado. Vá mais longe na próxima rampa.');
+  const reached = alphaMin <= VT2_ALPHA1 + 0.05;
+  let hrvt2 = reached ? solve(VT2_ALPHA1) : null;
+  if (hrvt2 === null && notes.length === 0) {
+    notes.push(
+      reached
+        ? 'O α1 chegou a 0,50, mas a reta α1 × FC só o alcança fora da faixa de FC do teste; HRVT2 não estimado.'
+        : 'O α1 não chegou perto de 0,50; HRVT2 não estimado. Vá mais longe na próxima rampa.',
+    );
+  }
   if (hrvt1 !== null && hrvt2 !== null && hrvt2 <= hrvt1) {
     hrvt1 = null;
     hrvt2 = null;

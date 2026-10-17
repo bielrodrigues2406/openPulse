@@ -46,6 +46,24 @@ export function shortDay(day: string): string {
   return new Date(y!, m! - 1, d!).toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' }).replace('.', '');
 }
 
+/** "+3" / "−2" / "0" with a real minus sign. */
+export function signed(v: number | null, digits = 0): string {
+  if (v === null || !Number.isFinite(v)) return '—';
+  const r = Number(v.toFixed(digits));
+  if (r === 0) return fmt(0, digits);
+  return `${r > 0 ? '+' : '−'}${fmt(Math.abs(r), digits)}`;
+}
+
+export function plural(n: number, one: string, many: string): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+/** "12/10" from "2026-10-12". */
+export function dm(day: string): string {
+  const [, m, d] = day.split('-');
+  return `${Number(d)}/${Number(m)}`;
+}
+
 export const SPORT_LABEL = { 'bike-indoor': 'Bike indoor', run: 'Corrida', other: 'Outro' } as const;
 
 export const KIND_LABEL = {

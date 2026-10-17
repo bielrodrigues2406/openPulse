@@ -7,7 +7,7 @@ import { localDay } from '../../domain/session/recorded-session';
 import { Bars } from '../components/Bars';
 import { Timeline } from '../components/Timeline';
 import { Section, Stat } from '../components/ui';
-import { fmt, shortDay } from '../format';
+import { dm, fmt, plural, shortDay, signed } from '../format';
 import { href } from '../router';
 import { useData } from '../services';
 
@@ -90,7 +90,7 @@ export function EvolutionScreen() {
         <Stat label="Fadiga" value={fmt(lastFit?.atl ?? null, 0)} note="carga aguda · 7 dias" />
         <Stat
           label="Equilíbrio"
-          value={lastFit ? `${lastFit.ctl - lastFit.atl >= 0 ? '+' : ''}${fmt(lastFit.ctl - lastFit.atl, 0)}` : '—'}
+          value={lastFit ? signed(lastFit.ctl - lastFit.atl) : '—'}
           note={lastFit ? (lastFit.ctl - lastFit.atl < -10 ? 'carga acima do habitual' : 'dentro do habitual') : 'sem carga'}
         />
         <Stat
@@ -101,7 +101,7 @@ export function EvolutionScreen() {
       </div>
 
       <div className="stack">
-        <Section title="Limiares pela rampa DFA" meta={`${thresholds.length} testes`}>
+        <Section title="Limiares pela rampa DFA" meta={plural(thresholds.length, 'teste', 'testes')}>
           {thresholds.length ? (
             <>
               <Timeline
@@ -112,6 +112,7 @@ export function EvolutionScreen() {
                 x={thX}
                 xTicks={dateTicks}
                 y="auto"
+                minSpan={30}
                 series={[
                   { points: () => thresholds.map((p) => ({ t: dayIndex(p.day), v: p.hrvt1 })), color: '--z1', width: 2 },
                   { points: () => thresholds.map((p) => ({ t: dayIndex(p.day), v: p.hrvt1 })), color: '--z1', dots: true },
@@ -137,7 +138,7 @@ export function EvolutionScreen() {
             <Bars
               unit="min"
               bars={weeks.map((w, i) => ({
-                label: shortDay(w.monday),
+                label: i % 2 === (weeks.length - 1) % 2 ? dm(w.monday) : '',
                 highlight: i === weeks.length - 1,
                 title: `Semana de ${shortDay(w.monday)}: ${Math.round(w.activeS / 60)} min · ${fmt(w.trimp)} TRIMP`,
                 parts: w.zonesS
@@ -162,6 +163,7 @@ export function EvolutionScreen() {
                   x={() => [dayIndex(fitness[0]!.day), dayIndex(fitness.at(-1)!.day)] as const}
                   xTicks={dateTicks}
                   y="auto"
+                  minSpan={10}
                   series={[
                     { points: () => fitness.map((p) => ({ t: dayIndex(p.day), v: p.ctl })), color: '--text', width: 2 },
                     { points: () => fitness.map((p) => ({ t: dayIndex(p.day), v: p.atl })), color: '--z2', width: 1.4, dashed: true },
@@ -210,6 +212,7 @@ export function EvolutionScreen() {
                 x={() => [drift[0]!.t - 3, Math.max(today, drift[0]!.t + 14)] as const}
                 xTicks={dateTicks}
                 y="auto"
+                minSpan={10}
                 refs={[{ y: 5, label: '5%' }]}
                 series={[{ points: () => drift, color: '--sig-hr', dots: true }]}
               />

@@ -1,5 +1,5 @@
 import { totalDurationS, type WorkoutTemplate } from '../../domain/workouts/workout';
-import { KIND_LABEL, SPORT_LABEL, duration } from '../format';
+import { KIND_LABEL, SPORT_LABEL, duration, plural } from '../format';
 import { go, href } from '../router';
 import { useData, useServices } from '../services';
 import { PhaseStrip } from './TrainScreen';
@@ -54,7 +54,7 @@ function Row({ t, onDuplicate }: { t: WorkoutTemplate; onDuplicate: () => void }
       </div>
       <div className="lib-side">
         <span className="num">{total ? duration(total) : '—'}</span>
-        <span className="faint" style={{ fontSize: 12 }}>{t.phases.length} fases</span>
+        <span className="faint" style={{ fontSize: 12 }}>{plural(t.phases.length, 'fase', 'fases')}</span>
         <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
           {!t.builtIn && <a className="btn sm" href={href({ name: 'template', id: t.id })}>Editar</a>}
           {t.id !== 'free' && <button className="btn sm quiet" onClick={onDuplicate}>Duplicar</button>}

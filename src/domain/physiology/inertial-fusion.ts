@@ -23,6 +23,12 @@ const RSA_WINDOW_MS = 60_000;
 const RSA_FS = 4;
 
 const CRANK_MIN_HZ = 0.6;
+/**
+ * The dominant peak is searched above this: breathing reaches ~0.9 Hz (54/min) at maximal
+ * effort and would otherwise pass for a slow cadence. Slower cranks are still found as
+ * half of the vertical (per-stroke) rhythm.
+ */
+const DOMINANT_MIN_HZ = 0.9;
 const CRANK_MAX_HZ = 2.2;
 const SPECTRUM_MAX_HZ = 4.5;
 const BREATH_MIN_HZ = 0.1;
@@ -126,7 +132,7 @@ export function estimateCadence(axes: readonly ArrayLike<number>[], fs: number):
   const spectra = axes.map((a) => spectrum(a, fs, CRANK_MIN_HZ * 0.9, SPECTRUM_MAX_HZ, 0.01));
   let strongest: { axis: number; peak: Peak } | null = null;
   spectra.forEach((s, axis) => {
-    const p = peakOf(s, CRANK_MIN_HZ, SPECTRUM_MAX_HZ);
+    const p = peakOf(s, DOMINANT_MIN_HZ, SPECTRUM_MAX_HZ);
     if (p && (!strongest || p.prominence > strongest.peak.prominence)) strongest = { axis, peak: p };
   });
   const top = strongest as { axis: number; peak: Peak } | null;
@@ -134,13 +140,15 @@ export function estimateCadence(axes: readonly ArrayLike<number>[], fs: number):
   const F = top.peak.freq;
   const present = (f: number) => f >= CRANK_MIN_HZ && f <= SPECTRUM_MAX_HZ && spectra.some((s) => hasPeakAt(s, f));
 
+  // F = crank when its stroke harmonic 2F exists; else F = stroke rhythm when F/2 exists.
+  // Checking 2F first keeps breathing that happens to sit at F/2 from halving the cadence.
   let crank: number;
   let conf: number;
-  if (present(F / 2)) {
-    crank = F / 2;
-    conf = 0.9;
-  } else if (present(F * 2)) {
+  if (present(F * 2)) {
     crank = F;
+    conf = 0.9;
+  } else if (present(F / 2)) {
+    crank = F / 2;
     conf = 0.9;
   } else {
     crank = F <= CRANK_MAX_HZ ? F : F / 2;
