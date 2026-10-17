@@ -10,7 +10,7 @@
     "typecheck": "tsc -b && tsc -p electron/tsconfig.json --noEmit",
     "test": "vitest run",
     "desktop": "npm run build && tsc -p electron/tsconfig.json && electron .",
-    "desktop:dist": "npm run build && tsc -p electron/tsconfig.json && electron-builder --win --x64"
+    "desktop:dist": "npm run build && tsc -p electron/tsconfig.json && electron-builder --win --x64 --publish never"
   },
   "devDependencies": {
     "@fontsource/ibm-plex-mono": "5.2.5",
@@ -69,5 +69,6 @@
       "icon": "build/icon.png",
       "category": "Sports"
     }
-  }
+  },
+  "author": "openPulse"
 }
