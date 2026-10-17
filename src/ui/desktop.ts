@@ -9,6 +9,8 @@ export interface DesktopBridge {
   showFile(path: string): void;
   /** Forget the remembered strap so the next connect picks again. */
   forgetDevice(): void;
+  /** Windows only: removes and redoes the strap's Bluetooth pairing, then reconnects. */
+  repairPairing(): Promise<{ ok: boolean; lines: string[] }>;
 }
 
 declare global {

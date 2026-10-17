@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { useHub, useServices } from '../services';
 import { IconBattery } from '../icons';
+import { desktopBridge } from '../desktop';
 
 /** Strap status + connect button. Full card in the sidebar, compact pill in the top bar. */
 export function SensorCard({ compact = false }: { compact?: boolean }) {
   const { hub, cues, toast } = useServices();
   const h = useHub();
   const [copied, setCopied] = useState(false);
+  const [repairing, setRepairing] = useState(false);
   const s = h.status;
   const live = s.state === 'streaming';
   const busy = s.state === 'connecting';
@@ -31,6 +33,17 @@ export function SensorCard({ compact = false }: { compact?: boolean }) {
   }
 
   const diag = hub.diagnostics();
+  const canRepair = desktopBridge !== undefined && h.source === 'h10' && !live && !busy;
+  const repair = async () => {
+    if (!desktopBridge) return;
+    setRepairing(true);
+    try {
+      const { ok, lines } = await desktopBridge.repairPairing();
+      toast(ok ? `Pareamento refeito · ${lines.at(-1) ?? ''}` : `Não deu para refazer o pareamento: ${lines.at(-1) ?? 'erro'}`);
+    } finally {
+      setRepairing(false);
+    }
+  };
   return (
     <div className="sensor">
       <div className="sensor-row">
@@ -48,6 +61,11 @@ export function SensorCard({ compact = false }: { compact?: boolean }) {
       <button className={live ? 'btn' : 'btn primary'} onClick={toggle} disabled={busy}>
         {live ? 'Desconectar' : busy ? 'Conectando…' : 'Conectar cinta'}
       </button>
+      {canRepair && s.state === 'error' && (
+        <button className="btn" style={{ marginTop: 8 }} onClick={() => void repair()} disabled={repairing}>
+          {repairing ? 'Refazendo pareamento…' : 'Refazer pareamento'}
+        </button>
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, gap: 8 }}>
         <button className="linkish" disabled={live || busy} onClick={() => hub.setSource(h.source === 'sim' ? 'h10' : 'sim')}>
           {h.source === 'sim' ? 'Usar Polar H10' : 'Usar simulador'}

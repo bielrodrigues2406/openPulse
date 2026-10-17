@@ -31,6 +31,8 @@ const HRV_WINDOW_MS = 60_000;
 const CHECKPOINT_MS = 10_000;
 /** No HR packet for this long while recording = sensor lost; the segment closes. */
 const STALL_MS = 6_000;
+/** Live readouts cleared when the strap goes silent. */
+const NO_READING = { bpm: null, lastRrMs: null, rmssdMs: null, artifactPct: null, contact: null, zone: null } as const;
 const TICK_MS = 500;
 const TARGET_GRACE_S = 90; // HR lags and α1 needs a full window after a phase change
 const TARGET_ALERT_AFTER_S = 30;
@@ -381,6 +383,8 @@ export class LiveSession {
       if (r && r.openSince !== null) this.sensorLost();
       // Without a workout the preview restarts with the next connection, gaps and all.
       if (!r) this.t0 = null;
+      this.update({ sensor, ...NO_READING });
+      return;
     }
     this.update({ sensor });
   };
@@ -453,6 +457,7 @@ export class LiveSession {
     if (!r || r.openSince === null) return;
     this.closeSegment(Math.max(r.openSince, this.lastPacketOffset()));
     r.pauseReason = 'sensor';
+    this.update(NO_READING); // a frozen 84 bpm reads as live; show dashes until data returns
     this.cues?.beep('alert');
     this.cues?.say('Sinal perdido. Treino pausado.');
     void this.checkpoint();

@@ -114,6 +114,19 @@ export function ProfileScreen() {
                 <span>Cinta lembrada</span>
                 <button className="btn sm" onClick={() => { desktopBridge?.forgetDevice(); toast('A próxima conexão vai procurar a cinta de novo'); }}>Esquecer</button>
               </div>
+              <div className="toggle" style={{ cursor: 'default' }}>
+                <span>Pareamento no Windows <span className="dim">· quando a cinta cai logo ao conectar ou o ECG não vem</span></span>
+                <button
+                  className="btn sm"
+                  disabled={h.status.state === 'streaming' || h.status.state === 'connecting'}
+                  onClick={() => {
+                    toast('Refazendo o pareamento…');
+                    void desktopBridge?.repairPairing().then(({ ok, lines }) => toast(ok ? `Pareamento refeito · ${lines.at(-1) ?? ''}` : `Não deu: ${lines.at(-1) ?? 'erro'}`));
+                  }}
+                >
+                  Refazer
+                </button>
+              </div>
             </>
           )}
           <div style={{ marginTop: 12 }}>

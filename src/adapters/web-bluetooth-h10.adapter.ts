@@ -19,6 +19,11 @@ export function isWebBluetoothAvailable(): boolean {
 /** Window after a PMD request in which a link drop is blamed on PMD. */
 const PMD_BLAME_MS = 2000;
 const MAX_AUTO_RECONNECTS = 3;
+/**
+ * Pauses before each reconnect attempt after a drop. Windows often needs several seconds before
+ * the strap is connectable again; giving up after a few quick tries lost whole workouts.
+ */
+const RECONNECT_DELAYS_MS = [0, 2000, 4000, 8000, 15_000, 15_000, 15_000];
 
 /**
  * Connection strategy, driven by field logs from Windows:
@@ -48,6 +53,10 @@ export class WebBluetoothH10Adapter extends SensorBase implements DiagnosticsSou
 
   private readonly log: string[] = [];
   private logStart = 0;
+
+  constructor(private readonly wait: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms))) {
+    super();
+  }
 
   diagnostics(): readonly string[] {
     return [navigator.userAgent, ...this.log];
@@ -109,7 +118,7 @@ export class WebBluetoothH10Adapter extends SensorBase implements DiagnosticsSou
     this.server = await retryOnNetworkError(async () => {
       this.linkLostWhileConnecting = false;
       this.step('gatt.connect');
-      const srv = await connectGatt(device, undefined, (m) => this.step(m));
+      const srv = await connectGatt(device, this.wait, (m) => this.step(m));
       this.step('conectado; serviço FC');
       const hrChar = await (await srv.getPrimaryService(HR_SERVICE)).getCharacteristic(HR_MEASUREMENT);
       this.step('notificações FC');
@@ -121,7 +130,7 @@ export class WebBluetoothH10Adapter extends SensorBase implements DiagnosticsSou
       }
       this.step('FC assinada');
       return srv;
-    });
+    }, this.wait);
     this.pmd = 'off';
     this.pmdControl = null; // characteristics from a previous link need fresh subscriptions
   }
@@ -254,16 +263,30 @@ export class WebBluetoothH10Adapter extends SensorBase implements DiagnosticsSou
     this.reconnectsInARow++;
     this.connecting = true;
     this.setStatus({ state: 'streaming', deviceName: `${this.deviceName} · reconectando…` });
+    let lastError: unknown = null;
     try {
-      await this.openHrLink(device);
-      this.step(`reconectado (${this.reconnectsInARow})`);
-      this.setStatus({ state: 'streaming', deviceName: this.statusName() });
-    } catch (err) {
-      this.step(`reconexão falhou: ${errText(err)}`);
+      for (const [i, delay] of RECONNECT_DELAYS_MS.entries()) {
+        if (delay) await this.wait(delay);
+        if (this.userDisconnect) return;
+        try {
+          await this.openHrLink(device);
+          this.step(`reconectado (${this.reconnectsInARow}, tentativa ${i + 1})`);
+          this.setStatus({ state: 'streaming', deviceName: this.statusName() });
+          return;
+        } catch (err) {
+          lastError = err;
+          this.step(`reconexão ${i + 1}/${RECONNECT_DELAYS_MS.length} falhou: ${errText(err)}`);
+          device.gatt?.disconnect();
+        }
+      }
       this.device = null;
-      this.setStatus({ state: 'error', message: describeBleError(err) });
+      this.setStatus({ state: 'error', message: describeBleError(lastError) });
     } finally {
       this.connecting = false;
+      if (this.userDisconnect && this.device) {
+        this.device = null;
+        this.setStatus({ state: 'idle' });
+      }
     }
   }
 

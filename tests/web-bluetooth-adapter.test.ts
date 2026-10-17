@@ -14,7 +14,7 @@ class FakeChar extends EventTarget {
   }
 }
 
-function fakeStrap(pmdDropsLink: boolean) {
+function fakeStrap(pmdDropsLink: boolean, failConnects = 0) {
   const hr = new FakeChar();
   const device = new EventTarget() as EventTarget & { name: string; gatt: unknown };
   const stats = { connects: 0, pmdRequests: 0 };
@@ -22,6 +22,10 @@ function fakeStrap(pmdDropsLink: boolean) {
     connected: false,
     async connect() {
       stats.connects++;
+      if (failConnects > 0 && stats.connects > 1) {
+        failConnects--;
+        throw new DOMException('Connection Error: Connection attempt failed.', 'NetworkError');
+      }
       gatt.connected = true;
       return gatt;
     },
@@ -50,7 +54,7 @@ function fakeStrap(pmdDropsLink: boolean) {
   return { hr, gatt, stats };
 }
 
-const tick = () => new Promise((r) => setTimeout(r, 0));
+const tick = () => new Promise<void>((r) => setTimeout(r, 0));
 const hrPacket = [0x16, 70, 0x00, 0x04]; // 70 bpm, contact, one R-R
 
 afterEach(() => {
@@ -120,5 +124,35 @@ describe('WebBluetoothH10Adapter', () => {
       for (let k = 0; k < 5; k++) await tick();
     }
     expect(statuses.at(-1)).toMatchObject({ state: 'error' });
+  });
+
+  it('keeps trying to reconnect for a while instead of giving up after a few quick failures', async () => {
+    const { hr, gatt, stats } = fakeStrap(false, 12);
+    const waits: number[] = [];
+    const a = new WebBluetoothH10Adapter(async (ms) => { waits.push(ms); });
+    const statuses: SensorStatus[] = [];
+    a.onStatus((s) => statuses.push(s));
+    await a.connect();
+    gatt.disconnect();
+    for (let k = 0; k < 200; k++) await tick();
+    expect(stats.connects).toBe(14);
+    expect(statuses.at(-1)).toEqual({ state: 'streaming', deviceName: 'Polar H10 TEST' });
+    expect(statuses.some((s) => s.state === 'error')).toBe(false);
+    expect(waits.filter((w) => w >= 2000).length).toBeGreaterThan(0);
+    hr.notify(hrPacket);
+  });
+
+  it('stops reconnecting when the user disconnects mid-way', async () => {
+    const { gatt, stats } = fakeStrap(false, 100);
+    const a = new WebBluetoothH10Adapter(tick);
+    const statuses: SensorStatus[] = [];
+    a.onStatus((s) => statuses.push(s));
+    await a.connect();
+    gatt.disconnect();
+    for (let k = 0; k < 15; k++) await tick();
+    a.disconnect();
+    for (let k = 0; k < 200; k++) await tick();
+    expect(statuses.at(-1)).toEqual({ state: 'idle' });
+    expect(stats.connects).toBeLessThan(30);
   });
 });
